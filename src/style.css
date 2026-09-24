@@ -2,3 +2,17 @@ html, body { margin: 0; width: 100%; height: 100%; background: #0b1117; overflow
 body { display: grid; place-items: center; }
 #game { width: 100vw; height: 100vh; display: grid; place-items: center; }
 canvas { display: block; box-shadow: 0 0 0 1px #3d5159, 0 16px 64px #0009; }
+#interface { position: absolute; width: min(100vw, 177.7778vh); height: min(100vh, 56.25vw); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; font-family: monospace; color: #ecf3e9; container-type: inline-size; }
+.toolbar { position: absolute; right: 2%; bottom: 2%; display: flex; gap: 8px; }
+button { pointer-events: auto; cursor: pointer; font: inherit; font-size: clamp(11px, 1.55cqw, 20px); color: #dcebe5; border: 1px solid #49666c; background: #101e25; padding: 9px 13px; }
+button:hover, button:focus-visible { border-color: #6bd3d0; background: #233b41; outline: 2px solid #6bd3d0; outline-offset: 2px; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; background: #060f17c7; }
+.overlay[hidden] { display: none; }
+.panel { width: 58%; max-height: 86%; overflow-y: auto; box-sizing: border-box; background: #102128; border: 1px solid #517277; padding: 3cqw; box-shadow: 0 12px 50px #0008; display: flex; flex-direction: column; gap: 12px; }
+.panel h1 { margin: 0; color: #8ee0db; font-size: 3.5cqw; text-transform: uppercase; letter-spacing: 0.1em; }
+.panel p { margin: 0 0 1cqw; line-height: 1.5; font-size: 1.6cqw; color: #b2c4c0; }
+.upgrade-panel { width: 90%; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5cqw; }
+.upgrade-card { text-align: left; min-height: 18cqw; display: flex; flex-direction: column; gap: 1.4cqw; line-height: 1.5; padding: 1.6cqw; }
+.upgrade-card strong { font-size: 1.9cqw; color: #f2efd5; }
+.card-key { font-size: 1.4cqw; color: #6bd3d0; }

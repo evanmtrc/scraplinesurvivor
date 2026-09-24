@@ -17,7 +17,7 @@ The numbers are starting hypotheses for playtesting, not final balance claims. T
 
 ## Next system decisions
 
-- **Phase 2:** XP thresholds start at 5 and grow gradually; pause simulation for a three-choice level-up screen. Initial pool: pistol fire rate, pistol damage, move speed, pickup radius, max HP, and repair. Choices should state exact effects and avoid duplicates in the same offer.
+- **Phase 2 (implemented):** XP thresholds start at 5 and grow by 3 each level; pause simulation for a three-choice level-up screen. Initial pool: pistol fire rate, pistol damage, move speed, pickup radius, max HP, and repair. Choices should state exact effects and avoid duplicates in the same offer.
 - **Phase 3:** Add Scattergun, Arc Welder, Saw Drone, Mortar Pod, and Rail Spike. Limit equipped weapons to four; weapon-specific upgrades enter the choice pool only when the weapon is owned. Distinct targeting and silhouettes matter more than rarity at this stage.
 - Keep enemy, weapon, and upgrade parameters in `src/data/`; add focused systems as behavior grows. Chests, elites, boss, meta progression, and rewarded ads belong to later phases.
 
@@ -29,3 +29,10 @@ The numbers are starting hypotheses for playtesting, not final balance claims. T
 4. Let HP reach zero, then press R; verify all counts and enemies reset.
 
 Record time to first kill, time to first XP, and any movement or aim failures. The main question is whether the first 30 seconds feel responsive enough to justify Phase 2.
+
+## Phase 2 playtest
+
+- Pause with the button, Esc, and P; verify the timer, enemies, projectiles, and HP freeze. Switch tabs and return; resume should require an explicit action.
+- Cycle targeting using the button and T; damaged enemies should attract Weakest priority, and equal priorities use nearest distance.
+- Collect five XP; the first level-up must stop simulation and offer three different upgrades. Choose with a click or 1–3; confirm the new effect and the next XP threshold.
+- Restart from pause and from death; all run stats and XP reset. The selected targeting preference stays for the next run.

@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { BALANCE as B } from '../data/balance';
 import { SpritePool } from '../systems/SpritePool';
+import { GameUI } from '../systems/GameUI';
+import { Progression, type RunStats, type Upgrade } from '../systems/Progression';
+import { selectTarget, TARGET_MODES, type TargetMode } from '../systems/targeting';
 
 type Enemy = { sprite: Phaser.GameObjects.Image; hp: number; flash: number };
 type Bullet = { sprite: Phaser.GameObjects.Image; vx: number; vy: number; age: number };
@@ -19,24 +22,29 @@ export class GameScene extends Phaser.Scene {
   private enemies: Enemy[] = [];
   private bullets: Bullet[] = [];
   private gems: Gem[] = [];
-  private hp = B.player.maxHp;
-  private xp = 0;
+  private stats!: RunStats;
+  private progression = new Progression();
+  private state: 'running' | 'paused' | 'upgrade' | 'ended' = 'running';
+  private targeting: TargetMode = 'Nearest';
+  private choices: Upgrade[] = [];
+  private ui!: GameUI;
+  private xpBar!: Phaser.GameObjects.Graphics;
   private kills = 0;
   private elapsed = 0;
   private spawnClock: number = B.spawn.firstDelay;
   private fireClock = 0.25;
   private invulnerable = 0;
-  private ended = false;
   private hud!: Phaser.GameObjects.Text;
-  private message!: Phaser.GameObjects.Text;
 
   constructor() { super('Game'); }
 
   create(): void {
     this.enemies = []; this.bullets = []; this.gems = [];
-    this.hp = B.player.maxHp; this.xp = 0; this.kills = 0; this.elapsed = 0;
+    this.stats = { damage: B.pistol.damage, cooldown: B.pistol.cooldown, speed: B.player.speed, pickupRadius: B.player.pickupRadius, maxHp: B.player.maxHp, hp: B.player.maxHp };
+    this.progression = new Progression(); this.choices = []; this.state = 'running';
+    this.kills = 0; this.elapsed = 0;
     this.spawnClock = B.spawn.firstDelay; this.fireClock = 0.25;
-    this.invulnerable = 0; this.ended = false;
+    this.invulnerable = 0;
     this.createTextures();
     this.drawWorld();
     this.enemyPool = new SpritePool(this, 'crawler', B.spawn.maxEnemies, 3);
@@ -47,27 +55,40 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.14, 0.14);
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.keys = this.input.keyboard!.addKeys('W,A,S,D') as typeof this.keys;
-    this.input.keyboard!.on('keydown-R', this.restartIfEnded, this);
+    this.ui = new GameUI({ pause: () => this.togglePause(), target: () => this.cycleTarget(), restart: () => this.scene.restart() });
+    this.ui.setTarget(this.targeting);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      if (event.code === 'Escape' || event.code === 'KeyP') { event.preventDefault(); this.togglePause(); }
+      if (event.code === 'KeyT') this.cycleTarget();
+      if (event.code === 'KeyR' && this.state === 'ended') this.scene.restart();
+      if (this.state === 'upgrade' && ['Digit1', 'Digit2', 'Digit3'].includes(event.code)) this.chooseUpgrade(Number(event.code.slice(-1)) - 1);
+    };
+    const onBlur = () => { if (this.state === 'running') this.togglePause(); };
+    const onVisibility = () => { if (document.hidden) onBlur(); };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onVisibility);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.input.keyboard?.off('keydown-R', this.restartIfEnded, this);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onVisibility);
+      this.ui.destroy();
     });
     this.hud = this.add.text(18, 16, '', {
       fontFamily: 'monospace', fontSize: '18px', color: '#ecf3e9',
       backgroundColor: '#0a131bc9', padding: { x: 10, y: 7 },
     }).setScrollFactor(0).setDepth(20);
-    this.add.text(18, 506, 'WASD / ARROWS  •  MOVE     AUTO-FIRE  •  NEAREST TARGET', {
+    this.add.text(18, 506, 'WASD / ARROWS  •  MOVE', {
       fontFamily: 'monospace', fontSize: '14px', color: '#b2c4c0',
       backgroundColor: '#0a131bb8', padding: { x: 8, y: 5 },
     }).setScrollFactor(0).setDepth(20);
-    this.message = this.add.text(480, 210, '', {
-      fontFamily: 'monospace', fontSize: '27px', align: 'center', color: '#f2efd5',
-      backgroundColor: '#09141ae8', padding: { x: 22, y: 16 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setVisible(false);
+    this.xpBar = this.add.graphics().setScrollFactor(0).setDepth(20);
     this.updateHud();
   }
 
   update(_time: number, delta: number): void {
-    if (this.ended) return;
+    if (this.state !== 'running') return;
     const dt = Math.min(delta / 1000, 0.05); // No large simulation jump after tab suspension.
     this.elapsed += dt;
     this.invulnerable = Math.max(0, this.invulnerable - dt);
@@ -80,12 +101,14 @@ export class GameScene extends Phaser.Scene {
     }
     this.fireClock -= dt;
     if (this.fireClock <= 0) {
-      this.fireAtNearest();
-      this.fireClock = B.pistol.cooldown;
+      this.fireAtTarget();
+      this.fireClock = this.stats.cooldown;
     }
     this.moveEnemies(dt);
+    if (this.stats.hp <= 0) { this.updateHud(); return; }
     this.moveBullets(dt);
     this.collectGems(dt);
+    this.checkLevelUp();
     this.updateHud();
   }
 
@@ -93,8 +116,8 @@ export class GameScene extends Phaser.Scene {
     const x = Number(this.keys.D.isDown || this.cursors.right.isDown) - Number(this.keys.A.isDown || this.cursors.left.isDown);
     const y = Number(this.keys.S.isDown || this.cursors.down.isDown) - Number(this.keys.W.isDown || this.cursors.up.isDown);
     const length = Math.hypot(x, y) || 1;
-    this.player.x = Phaser.Math.Clamp(this.player.x + x / length * B.player.speed * dt, 18, B.worldSize - 18);
-    this.player.y = Phaser.Math.Clamp(this.player.y + y / length * B.player.speed * dt, 18, B.worldSize - 18);
+    this.player.x = Phaser.Math.Clamp(this.player.x + x / length * this.stats.speed * dt, 18, B.worldSize - 18);
+    this.player.y = Phaser.Math.Clamp(this.player.y + y / length * this.stats.speed * dt, 18, B.worldSize - 18);
   }
 
   private spawnEnemy(): void {
@@ -116,21 +139,16 @@ export class GameScene extends Phaser.Scene {
       enemy.flash = Math.max(0, enemy.flash - dt);
       enemy.sprite.setTint(enemy.flash > 0 ? 0xffffff : 0xc96f60);
       if (length < B.player.radius + B.crawler.radius && this.invulnerable <= 0) {
-        this.hp -= B.crawler.contactDamage;
+        this.stats.hp -= B.crawler.contactDamage;
         this.invulnerable = B.player.invulnerability;
         this.cameras.main.shake(90, 0.002);
-        if (this.hp <= 0) this.endRun();
+        if (this.stats.hp <= 0) { this.endRun(); return; }
       }
     }
   }
 
-  private fireAtNearest(): void {
-    let target: Enemy | undefined;
-    let closest = B.pistol.range ** 2;
-    for (const enemy of this.enemies) {
-      const d = distanceSquared(this.player.x, this.player.y, enemy.sprite.x, enemy.sprite.y);
-      if (d < closest) { closest = d; target = enemy; }
-    }
+  private fireAtTarget(): void {
+    const target = selectTarget(this.enemies, this.player.x, this.player.y, B.pistol.range, this.targeting);
     if (!target) return;
     const dx = target.sprite.x - this.player.x;
     const dy = target.sprite.y - this.player.y;
@@ -149,7 +167,7 @@ export class GameScene extends Phaser.Scene {
       if (!spent) for (let j = this.enemies.length - 1; j >= 0; j--) {
         const enemy = this.enemies[j];
         if (distanceSquared(bullet.sprite.x, bullet.sprite.y, enemy.sprite.x, enemy.sprite.y) > (B.crawler.radius + B.pistol.radius) ** 2) continue;
-        enemy.hp -= B.pistol.damage;
+        enemy.hp -= this.stats.damage;
         enemy.flash = 0.09;
         enemy.sprite.x += bullet.vx * 0.013;
         enemy.sprite.y += bullet.vy * 0.013;
@@ -168,6 +186,12 @@ export class GameScene extends Phaser.Scene {
     const enemy = this.enemies[index];
     const gem = this.gemPool.acquire(enemy.sprite.x, enemy.sprite.y);
     if (gem) this.gems.push({ sprite: gem, value: B.crawler.xp });
+    else if (this.gems.length) {
+      // Preserve earned XP when the pickup sprite pool fills.
+      let nearest = this.gems[0];
+      for (const pickup of this.gems) if (distanceSquared(pickup.sprite.x, pickup.sprite.y, enemy.sprite.x, enemy.sprite.y) < distanceSquared(nearest.sprite.x, nearest.sprite.y, enemy.sprite.x, enemy.sprite.y)) nearest = pickup;
+      nearest.value += B.crawler.xp;
+    }
     this.enemyPool.release(enemy.sprite);
     this.enemies.splice(index, 1);
     this.kills++;
@@ -179,11 +203,11 @@ export class GameScene extends Phaser.Scene {
       const dx = this.player.x - gem.sprite.x;
       const dy = this.player.y - gem.sprite.y;
       const d = Math.hypot(dx, dy);
-      if (d < B.player.pickupRadius) {
-        this.xp += gem.value;
+      if (d < this.stats.pickupRadius) {
+        this.progression.gain(gem.value);
         this.gemPool.release(gem.sprite);
         this.gems.splice(i, 1);
-      } else if (d < 92) {
+      } else if (d < this.stats.pickupRadius + 64) {
         const step = Math.min(d, 320 * dt);
         gem.sprite.x += dx / d * step;
         gem.sprite.y += dy / d * step;
@@ -193,17 +217,55 @@ export class GameScene extends Phaser.Scene {
 
   private updateHud(): void {
     const time = `${Math.floor(this.elapsed / 60).toString().padStart(2, '0')}:${Math.floor(this.elapsed % 60).toString().padStart(2, '0')}`;
-    this.hud.setText(`SCRAPLINE // GRAYBOX     HP ${this.hp}/${B.player.maxHp}     XP ${this.xp}     KILLS ${this.kills}     ${time}`);
+    const p = this.progression;
+    this.hud.setText(`SCRAPLINE // LV ${p.level}    HP ${this.stats.hp}/${this.stats.maxHp}    XP ${p.xp}/${p.threshold}    KILLS ${this.kills}    ${time}`);
+    this.xpBar.clear().fillStyle(0x0a131b, 0.8).fillRect(18, 57, 924, 4);
+    this.xpBar.fillStyle(0x6bd3d0).fillRect(18, 57, 924 * Math.min(1, p.xp / p.threshold), 4);
+  }
+
+  private summary(): string {
+    return `Level ${this.progression.level} · ${this.kills} kills · ${this.progression.totalXp} XP · ${Math.floor(this.elapsed)} seconds`;
+  }
+
+  private togglePause(): void {
+    if (this.state === 'running') {
+      this.state = 'paused';
+      this.cameras.main.shakeEffect.reset();
+      this.ui.showPause(this.summary(), this.targeting);
+    } else if (this.state === 'paused') {
+      this.state = 'running';
+      this.ui.hide();
+    }
+  }
+
+  private cycleTarget(): void {
+    if (this.state === 'ended' || this.state === 'upgrade') return;
+    this.targeting = TARGET_MODES[(TARGET_MODES.indexOf(this.targeting) + 1) % TARGET_MODES.length];
+    this.ui.setTarget(this.targeting);
+  }
+
+  private checkLevelUp(): void {
+    if (!this.progression.advance()) return;
+    this.state = 'upgrade';
+    this.cameras.main.shakeEffect.reset();
+    this.choices = this.progression.choices(this.stats);
+    this.ui.showChoices(this.progression.level, this.choices, index => this.chooseUpgrade(index));
+  }
+
+  private chooseUpgrade(index: number): void {
+    if (this.state !== 'upgrade' || !this.choices[index]) return;
+    this.choices[index].apply(this.stats);
+    this.choices = [];
+    this.ui.hide();
+    this.state = 'running';
+    this.checkLevelUp();
+    this.updateHud();
   }
 
   private endRun(): void {
-    this.ended = true;
+    this.state = 'ended';
     this.player.setAlpha(1);
-    this.message.setText(`RUN ENDED\n${this.kills} kills  •  ${this.xp} XP\nPress R to retry`).setVisible(true);
-  }
-
-  private restartIfEnded(): void {
-    if (this.ended) this.scene.restart();
+    this.ui.showEnd(this.summary());
   }
 
   private drawWorld(): void {
