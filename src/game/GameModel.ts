@@ -121,7 +121,7 @@ export class GameModel {
       if (dist({x,y},this.player) > 340) break;
     }
     const d = ENEMIES[kind];
-    const hp = kind === 'tyrant' ? (this.mode === 'skirmish' ? 280 : d.hp) : d.hp * (1 + this.phaseTime / 320) * (elite ? 5 : 1);
+    const hp = kind === 'tyrant' ? (this.mode === 'skirmish' ? 280 : d.hp) : d.hp * (1 + Math.max(0,this.phaseTime-75) / 320) * (elite ? 5 : 1);
     const enemy: Enemy = {id:this.uid++,x,y,kind,hp,maxHp:hp,radius:d.radius*(elite?1.4:1),elite,angle:0,clock:1+this.random(),windup:0,attack:'',dash:0,flash:0,slow:0,shielded:false,sawHit:0};
     this.enemies.push(enemy); return enemy;
   }

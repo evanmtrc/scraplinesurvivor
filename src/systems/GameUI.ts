@@ -35,7 +35,7 @@ export class GameUI {
   render(model:GameModel,save:SaveData):void{
     this.model=model;this.save=save;
     const s=model.stats;
-    this.hud.querySelector('.hud-label')!.textContent=model.bossDefeated?'EXTRACTION OPEN · FOLLOW THE CYAN BEACON':`${MODES[model.mode].title.toUpperCase()} / TYRANT SIGNAL IN ${formatTime(Math.max(0,MODES[model.mode].bossAt-model.elapsed))}`;
+    this.hud.querySelector('.hud-label')!.textContent=model.bossSpawned?`${model.bossDefeated?'EXTRACTION OPEN':'DEFEAT THE TYRANT'} · ${formatTime(Math.max(0,MODES[model.mode].deadline-model.elapsed))} REMAINING`:`${MODES[model.mode].title.toUpperCase()} / TYRANT SIGNAL IN ${formatTime(Math.max(0,MODES[model.mode].bossAt-model.elapsed))}`;
     this.hp.textContent=`${Number(s.hp.toFixed(1))} / ${s.maxHp} HP`;this.level.textContent=`LV ${model.level}`;this.clock.textContent=formatTime(model.elapsed);
     this.hpFill.style.width=`${s.hp/s.maxHp*100}%`;this.xpFill.style.width=`${Math.min(1,model.xp/model.threshold)*100}%`;
     this.xp.textContent=`${Math.floor(model.xp)} / ${model.threshold} XP`;
@@ -110,10 +110,10 @@ export class GameUI {
   }
   private guide():void{
     this.view='guide';const panel=this.panel('Field guide','Read silhouettes, watch attack warnings, and keep a path open.','guide-panel');
-    panel.append(element('h2','','Hostile signals'));const list=element('div','guide-grid');
+    const back=this.button('Back',()=>{this.view='';this.key='';this.render(this.model,this.save);});back.className='guide-back';panel.append(back,element('h2','','Hostile signals'));const list=element('div','guide-grid');
     for(const [kind,enemy] of Object.entries(ENEMIES)){const card=element('div','guide-item');card.style.borderColor=`#${enemy.color.toString(16).padStart(6,'0')}`;const icon=element('img','enemy-portrait');icon.src=this.texture(kind);icon.alt='';card.append(icon,element('strong','',enemy.name),element('span','',enemy.description));list.append(card);}panel.append(list,element('h2','','Salvager arsenal'));
     panel.append(element('p','','Gold rings mark elites: tougher enemies with guaranteed chests. Green map markers are salvage scans—hold nearby for 4 seconds. Defeat the Tyrant, then hold inside the cyan extraction beacon for 3 seconds before the deadline.'));
-    const arsenal=element('div','guide-grid');for(const id of WEAPON_IDS){const card=element('div','guide-item');card.append(element('strong','',WEAPONS[id].name),element('span','',WEAPONS[id].description));arsenal.append(card);}panel.append(arsenal,this.button('Back',()=>{this.view='';this.key='';this.render(this.model,this.save);}));panel.querySelector('button')?.focus();
+    const arsenal=element('div','guide-grid');for(const id of WEAPON_IDS){const card=element('div','guide-item');card.append(element('strong','',WEAPONS[id].name),element('span','',WEAPONS[id].description));arsenal.append(card);}panel.append(arsenal);back.focus({preventScroll:true});panel.scrollTop=0;
   }
   private hide():void{this.overlay.hidden=true;this.overlay.replaceChildren();this.toolbar.inert=false;if(this.returnFocus?.isConnected)this.returnFocus.focus();}
   destroy():void{this.root.remove();}

@@ -82,3 +82,5 @@ button.primary { background:#387875; color:#eefff1; border-color:#83d4c4; }
 
 .salvager-portrait { position:absolute; top:2.5cqw; right:3cqw; width:11cqw; height:11cqw; object-fit:contain; image-rendering:pixelated; filter:drop-shadow(0 4px 6px #0008); }
 .enemy-portrait { width:5cqw; height:5cqw; object-fit:contain; image-rendering:pixelated; align-self:center; }
+
+.guide-back { position:sticky; top:0; z-index:1; }

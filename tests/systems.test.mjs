@@ -20,6 +20,7 @@ try {
   const straight=calm(),diagonal=calm();step(straight,1,{x:1,y:0,dash:false});step(diagonal,1,{x:1,y:1,dash:false});
   assert.ok(Math.abs(straight.player.x-1600-235)<1e-6);assert.ok(Math.abs(Math.hypot(diagonal.player.x-1600,diagonal.player.y-1600)-235)<1e-6);
   straight.pause();const frozen=JSON.stringify(straight);step(straight,5,{x:1,y:0,dash:true});assert.equal(JSON.stringify(straight),frozen);straight.pause();
+  const initial=calm();assert.equal(initial.spawn('crawler').hp,2);initial.elapsed=150;assert.ok(initial.spawn('crawler').hp>2);
   const targeting=calm();const near=targeting.spawn('bruiser',false,{x:1650,y:1600});const weak=targeting.spawn('crawler',false,{x:1700,y:1600});const strong=targeting.spawn('bruiser',true,{x:1800,y:1600});
   assert.equal(targeting.target(410).id,near.id);targeting.cycleTarget();assert.equal(targeting.target(410).id,weak.id);targeting.cycleTarget();assert.equal(targeting.target(410).id,strong.id);targeting.cycleTarget();assert.equal(targeting.targeting,'Nearest');
   const scan=calm();scan.player.x=scan.nodes[0].x;scan.player.y=scan.nodes[0].y;step(scan,4.1);assert.equal(scan.nodes[0].done,true);assert.equal(scan.state,'chest');assert.equal(scan.cores,1);assert.equal(scan.choose(0),true);
