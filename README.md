@@ -15,7 +15,7 @@ Open the URL printed by Vite. `npm run build` checks TypeScript and produces `di
 
 ## Test in a browser without installing anything
 
-After GitHub Pages is enabled in **Settings → Pages → Build and deployment → Source: GitHub Actions**, merges to `main` deploy the game to `https://evanmtrc.github.io/scraplinesurvivor/`. The first deployment appears in the repository's **Actions** tab; use its deployment link once it succeeds. The published page is public.
+After GitHub Pages is enabled in **Settings → Pages → Build and deployment → Source: GitHub Actions**, merges to `main` deploy the game to `https://evanmtrc.github.io/scraplinesurvivor/`. GitHub may suggest Jekyll or HTML starter workflows; skip those. The existing [Deploy game to GitHub Pages](https://github.com/evanmtrc/scraplinesurvivor/actions/workflows/pages.yml) workflow builds the game. Use **Actions → Deploy game to GitHub Pages → Run workflow** (branch `main`) for a manual deploy. The published page is public.
 
 ## Scope
 
