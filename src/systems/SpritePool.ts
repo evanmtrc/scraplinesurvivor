@@ -18,7 +18,7 @@ export class SpritePool {
       item = this.scene.add.image(x, y, this.texture).setDepth(this.depth);
       this.items.push(item);
     }
-    return item.setPosition(x, y).setActive(true).setVisible(true).setAlpha(1).setScale(1);
+    return item.setPosition(x, y).setActive(true).setVisible(true).setAlpha(1).setScale(1).setRotation(0).clearTint();
   }
 
   release(item: Phaser.GameObjects.Image): void {

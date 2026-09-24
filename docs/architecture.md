@@ -1,25 +1,34 @@
 # Technical architecture
 
-## Stack and layout
+## Responsibilities
 
-- **Phaser 3 + TypeScript + Vite:** browser canvas/WebGL game with a small static build.
-- `src/main.ts`: game boot, renderer, and viewport.
-- `src/scenes/GameScene.ts`: Phase 1 orchestration, input, camera, HUD, movement, targeting, hits, drops, and death.
-- `src/data/balance.ts`: tunable prototype numbers.
-- `src/systems/SpritePool.ts`: reuse of enemies, bullets, and pickup sprites.
-- `docs/`: decisions and playtest notes.
+| File | Responsibility |
+| --- | --- |
+| `src/main.ts` | Phaser boot and 960 × 540 logical viewport, fit scaling |
+| `src/game/content.ts` | Weapon/enemy definitions, modes, entity caps, geometry helpers |
+| `src/game/GameModel.ts` | Renderer-independent simulation, director, combat, drops, levels, chests, objectives, run result |
+| `src/game/SaveData.ts` | Versioned browser save validation, workshop prices, purchases |
+| `src/game/Art.ts` | Procedural textures generated once; no downloaded assets |
+| `src/game/AudioBus.ts` | Gesture-unlocked Web Audio cues with throttling, voice cap, mute |
+| `src/scenes/GameScene.ts` | Input, camera, model update, rendering, audio dispatch, save settlement |
+| `src/systems/GameUI.ts` | Native DOM HUD, focus-managed dialogs, hangar, guide, workshop |
+| `src/systems/SpritePool.ts` | Sprite reuse and reset on acquisition |
+| `tests/systems.test.mjs` | Deterministic simulation regression checks |
 
-## Update flow
+## Simulation
 
-The scene clamps the frame delta, moves the player, spawns and moves crawlers, fires at the nearest in-range target, moves projectiles and resolves circle hits, then attracts and collects gems. UI derives from scene state. Pooled sprites are hidden on release; active entities are kept in small typed arrays. Enemy count, projectile count, and gem count have explicit caps. There is no physics solver or pathfinding.
+`GameModel.tick()` accepts elapsed seconds and a movement/dash input. It clamps a frame to 50 ms, then updates movement, encounter director, enemy behavior, weapon cooldowns, projectiles, delayed mortar shells, pickups, objectives, and progression. Time advances only in `running`; `briefing`, `paused`, `upgrade`, `chest`, and `ended` freeze simulation. UI and renderer derive from this model.
 
-Phase 2 uses `Progression.ts` for XP and eligible upgrade choices, `targeting.ts` for automatic target selection, and `GameUI.ts` for keyboard-accessible controls and dialogs. A single run state gates simulation updates: running, paused, upgrade, or ended. Game time, damage, spawns, projectiles, and pickups stop outside running. Focus loss pauses a running game; an upgrade dialog remains pending. For Phase 3, replace the pistol-specific fire method with a weapon interface and per-weapon cooldown state. Keep one scene as the coordinator until complexity warrants scene splits. Use deterministic seeded random input for reproducible balance tests once upgrade randomness arrives.
+Randomness is injected into the constructor. Tests transpile the three pure TypeScript modules into a temporary directory and supply seeded RNGs. They need neither Phaser nor a browser. Rendering and input still require browser playtesting.
 
-## Build order
+Entities live in capped arrays. Enemies use a local spatial grid for separation. Fast bullets use swept segment/circle collision to avoid passing through targets between frames. Shield drones reduce damage to nearby allies. Rendering reuses sprites, shares graphics layers, and caps floating damage labels at 36. Audio limits voices and frequent cues.
 
-1. Phase 1 graybox (implemented): input → movement/camera → crawler spawn/chase → pistol targeting/hits → XP pickup → survival/restart.
-2. Playtest the first 30 seconds and adjust `balance.ts`.
-3. Phase 2 (implemented): XP thresholds and pause → three distinct choices → upgrades and timer pacing.
-4. Phase 3: weapon abstraction → five additional weapons → four-slot cap → owned-weapon upgrades → visual clarity pass.
+Enemy cap: 180; friendly projectiles: 200; hostile projectiles: 100; pickups: 220; effects: 180; mortar shells: 20. Bosses and elites can replace an ordinary enemy when the cap is full. Pickup overflow merges values rather than discarding XP. Ordinary enemies far outside the camera are recycled near the player. The model remains deliberately simple: no physics engine, pathfinding, terrain collision, networking, or destructible environment.
 
-Deployable output is `dist/` after `npm run build`; no server state is required.
+## UI and persistence
+
+Native buttons support mouse, keyboard, and touch. Modal focus is trapped; run controls are disabled behind a modal. The scene clears transient touch/dash input on pause and pauses when focus or visibility is lost. Sound requires a browser input gesture. Reduced motion suppresses camera shake, damage vignette, character bobbing, and CSS transitions.
+
+The save is localStorage key `scrapline-save-v1`. Parsing clamps numeric values and supplies defaults. Purchases validate funds and rank limits. Run rewards settle once, so revisiting results cannot bank twice. Starting supply scrap can pay rerolls but cannot be banked as free profit. Unavailable storage falls back to session memory with an in-game notification.
+
+The Pages workflow tests and builds a static `dist/`. Vite's repository base path keeps asset URLs valid on GitHub Pages.

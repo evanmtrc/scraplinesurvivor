@@ -1,3 +1,5 @@
+> Historical prototype decisions. See [Build 0.3](build-spec-0.3.md) for the current implementation.
+
 # Build Spec 0.1
 
 ## Locked prototype decisions
