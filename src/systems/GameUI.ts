@@ -61,7 +61,7 @@ export class GameUI {
   closeSubview():boolean{if(!this.view)return false;this.view='';this.key='';this.render(this.model,this.save);return true;}
   private briefing():void{
     const panel=this.panel('Scrapline Survivor','Choose a sortie. Build your weapons. Bring something back.','hangar-panel');
-    panel.prepend(el('div','eyebrow','FRONTIER OPERATIONS // BUILD 0.4'));
+    panel.prepend(el('div','eyebrow','FRONTIER OPERATIONS // BUILD 0.4.1'));
     const portrait=this.icon('salvager','Armored frontier salvager');portrait.className='salvager-portrait';panel.append(portrait);
     const modes=el('div','mode-grid');
     for(const mode of ['expedition','skirmish'] as Mode[]){const b=this.button('',()=>{this.resetView();this.actions.start(mode);});b.className='mode-card';b.append(el('span','eyebrow',mode==='expedition'?'01 / LONG RANGE':'02 / RAPID SORTIE'),el('strong','',MODES[mode].title),el('span','',MODES[mode].description));modes.append(b);}

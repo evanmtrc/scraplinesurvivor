@@ -42,3 +42,9 @@ The Pages workflow tests and builds a static `dist/`. Vite's repository base pat
 Weapons store only identity, cooldown, and installed modifiers. Modifiers store their own rarity and belong to exactly one weapon. Derived weapon stats drive both hit geometry and visible drone positions. Weapon slots remain capped at four; modifier families have per-run stack caps.
 
 Crates generate one eligible item and leave a textured ground drop. Collection pauses for a one-card item reveal. Item stacks apply passive stats or explicit combat hooks; proc damage cannot recursively trigger critical chains. Phoenix revival is tracked separately from inventory count and cannot be refreshed by duplicates. Max-stack duplicates recycle into scrap. Items never appear in level-up choices, and weapon choices never appear in crate rewards.
+
+## Maintenance 0.4.1
+
+Base health is `STARTING_HP = 10`. The player body is an upright camera anchor; target angles control weapons only. Movement input is cleared when entering a modal, on focus loss, and at restart, including pointer release outside the canvas.
+
+Weapon stat caches are keyed by weapon identity, installed-modifier count and Prism stacks; installed modifiers are append-only during a run. Projectile collision reuses candidate storage, rejects distant candidates with bounds checks, and checks the final partial lifetime segment. Sprite pools use a free list, and rendering releases expired IDs before acquiring replacements. Paused frames skip graphics/UI reconstruction; explicit actions still refresh the UI. Progress checks run at HUD cadence and identical save snapshots are not written again. Audio tables are shared and the twelve-voice limit is enforced.

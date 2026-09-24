@@ -6,13 +6,14 @@ import ts from 'typescript';
 const temp=await mkdtemp(join(process.cwd(),'.test-build-'));
 try{
   await writeFile(join(temp,'package.json'),'{"type":"module"}');
-  for(const name of ['content','Progression','Upgrades','Items','SaveData','GameModel']){
-    const source=await readFile(new URL(`../src/game/${name}.ts`,import.meta.url),'utf8');
+  for(const name of ['content','Progression','Upgrades','Items','SaveData','GameModel','AudioBus','SpritePool']){
+    const source=await readFile(new URL(`../src/${name==='SpritePool'?'systems':'game'}/${name}.ts`,import.meta.url),'utf8');
     await writeFile(join(temp,`${name}.js`),ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);
   }
   const load=name=>import(pathToFileURL(join(temp,`${name}.js`)));
   const {GameModel}=await load('GameModel'),{WEAPON_IDS,LIMITS,segmentDistance,MODES}=await load('content');
   const {parseSave,purchase}=await load('SaveData'),{emptyProgress,achieved,ACHIEVEMENTS}=await load('Progression');
+  const {SpritePool}=await load('SpritePool'),{AudioBus}=await load('AudioBus');
   const {WEAPON_MODS,rollRarity}=await load('Upgrades'),{ITEMS,ITEM_IDS}=await load('Items');
   let checks=0;const test=(name,fn)=>{fn();checks++;console.log(`✓ ${name}`);};
   const unlocked=()=>Object.fromEntries(Object.keys(emptyProgress()).map(k=>[k,1000]));
@@ -22,6 +23,7 @@ try{
   const step=(m,seconds,input={x:0,y:0,dash:false})=>{for(let i=0;i<Math.ceil(seconds/.05);i++)m.tick(.05,input);};
   const foe=(m,kind='bruiser',x=1700,y=1600,hp=1000)=>{const e=m.spawn(kind,false,{x,y});e.hp=e.maxHp=hp;return e;};
   const install=(m,id,rarity=0)=>{const mod=WEAPON_MODS.find(x=>x.id===id);m.state='upgrade';m.choices=[{id,kind:'weaponMod',weapon:mod.weapon,mod:id,rarity}];assert.equal(m.choose(0),true);};
+  test('Starting health is 10 in both modes, with workshop plating added',()=>{for(const mode of ['expedition','skirmish']){const base=new GameModel(mode),plated=new GameModel(mode,{plating:3,magnet:0,supplies:0});assert.equal(base.stats.hp,10);assert.equal(base.stats.maxHp,10);assert.equal(plated.stats.hp,13);assert.equal(plated.stats.maxHp,13);}});
   test('Base movement stays 235, normalized diagonals; pause freezes model',()=>{
     const a=calm(),b=calm();step(a,1,{x:1,y:0,dash:false});step(b,1,{x:1,y:1,dash:false});assert.ok(Math.abs(a.player.x-1835)<1e-6);assert.ok(Math.abs(Math.hypot(b.player.x-1600,b.player.y-1600)-235)<1e-6);
     a.pause();const snapshot=JSON.stringify(a);step(a,3,{x:1,y:0,dash:true});assert.equal(JSON.stringify(a),snapshot);
@@ -80,12 +82,12 @@ try{
     const supplies=new GameModel('expedition',{plating:0,magnet:0,supplies:3});supplies.end(false,'Abort');assert.equal(supplies.banked,0);
   });
   test('Items apply stats, caps, pulse timers, dash effects, protection and one-use revival',()=>{
-    assert.equal(ITEM_IDS.length,16);const m=calm();m.collectItem('magnet');assert.equal(m.stats.pickup,46);m.stats.hp=3;m.collectItem('patch');assert.equal(m.stats.maxHp,6);assert.equal(m.stats.hp,4);m.collectItem('flywheel');assert.equal(m.stats.rate,1.08);m.collectItem('scope');assert.equal(m.stats.crit,.09);m.collectItem('compass');assert.equal(m.stats.xpBonus,1.1);
+    assert.equal(ITEM_IDS.length,16);const m=calm();m.collectItem('magnet');assert.equal(m.stats.pickup,46);m.stats.hp=3;m.collectItem('patch');assert.equal(m.stats.maxHp,11);assert.equal(m.stats.hp,4);m.collectItem('flywheel');assert.equal(m.stats.rate,1.08);m.collectItem('scope');assert.equal(m.stats.crit,.09);m.collectItem('compass');assert.equal(m.stats.xpBonus,1.1);
     const dash=calm();dash.collectItem('boots');dash.collectItem('battery');dash.weapons=[];const e=foe(dash,'bruiser',1680);step(dash,.05,{x:1,y:0,dash:true});assert.equal(dash.player.dashCooldown,2.8);assert.ok(e.hp<1000);const hp=dash.stats.hp;dash.hurt(2);assert.equal(dash.stats.hp,hp);
     const pulse=calm();pulse.weapons=[];pulse.collectItem('ration');pulse.collectItem('ice');pulse.collectItem('reactor');pulse.stats.hp=2;const ice=foe(pulse,'bruiser',1770);pulse.player.invulnerable=100;step(pulse,6.1);assert.ok(ice.slow>0);step(pulse,12);assert.ok(pulse.stats.hp>=3&&pulse.damageDealt>12);
     const thorns=calm();thorns.weapons=[];thorns.collectItem('thorns');const t=foe(thorns,'bruiser',1680);thorns.hurt(1);assert.equal(t.hp,996);
-    const shield=calm();shield.collectItem('cloak');shield.hurt(2);assert.equal(shield.stats.hp,5);assert.equal(shield.itemTimers.cloak,20);shield.player.invulnerable=0;shield.hurt(1);assert.equal(shield.stats.hp,4);
-    const revive=calm();revive.collectItem('phoenix');revive.hurt(99);assert.equal(revive.state,'running');assert.equal(revive.phoenixUsed,true);assert.equal(revive.stats.hp,2.5);revive.collectItem('phoenix');assert.equal(revive.scrap,15);revive.player.invulnerable=0;revive.hurt(99);assert.equal(revive.state,'ended');
+    const shield=calm();shield.collectItem('cloak');shield.hurt(2);assert.equal(shield.stats.hp,10);assert.equal(shield.itemTimers.cloak,20);shield.player.invulnerable=0;shield.hurt(1);assert.equal(shield.stats.hp,9);
+    const revive=calm();revive.collectItem('phoenix');revive.hurt(99);assert.equal(revive.state,'running');assert.equal(revive.phoenixUsed,true);assert.equal(revive.stats.hp,5);revive.collectItem('phoenix');assert.equal(revive.scrap,15);revive.player.invulnerable=0;revive.hurt(99);assert.equal(revive.state,'ended');
     const prism=calm();prism.collectItem('prism');assert.equal(prism.weaponStats(prism.weapons[0]).count,1);
   });
   test('Storm Relay cannot recurse; Siphon Fang heals on its kill milestone',()=>{
@@ -97,7 +99,7 @@ try{
     const split=calm();split.damage(foe(split,'splitter',1700,1600,1),100);assert.equal(split.enemies.filter(e=>e.kind==='skitter').length,3);
     const spitter=calm();spitter.weapons=[];foe(spitter,'spitter',1840).clock=0;step(spitter,1);assert.ok(spitter.shots.some(s=>s.hostile));
     const charge=calm();charge.weapons=[];const ram=foe(charge,'charger',1850);ram.clock=0;step(charge,.05);assert.ok(ram.windup>0&&ram.dash===0);step(charge,.85);assert.ok(ram.dash>0);
-    const bomber=calm();bomber.weapons=[];foe(bomber,'bomber',1660).clock=0;step(bomber,1.1);assert.equal(bomber.stats.hp,3);
+    const bomber=calm();bomber.weapons=[];foe(bomber,'bomber',1660).clock=0;step(bomber,1.1);assert.equal(bomber.stats.hp,8);
     const elite=calm();const el=elite.spawn('bruiser',true,{x:1700,y:1600});elite.damage(el,10000);assert.equal(elite.chests.length,1);assert.equal(elite.metrics.elites,1);
     const cap=calm();for(let i=0;i<LIMITS.pickups;i++)cap.drop('xp',0,0,1);cap.drop('xp',0,0,9);assert.equal(cap.pickups.length,LIMITS.pickups);assert.equal(cap.pickups.reduce((n,p)=>n+p.value,0),LIMITS.pickups+9);
   });
@@ -109,6 +111,47 @@ try{
     const old=parseSave(JSON.stringify({version:1,bank:145,bestKills:600,bestTime:640,runs:3,wins:1,upgrades:{plating:2,magnet:1,supplies:3},muted:true}));assert.equal(old.version,2);assert.equal(old.bank,145);assert.equal(old.upgrades.plating,2);assert.equal(old.progress.kills,600);assert.equal(old.progress.bosses,1);assert.equal(old.muted,true);assert.equal(old.showMap,false);
     for(const raw of ['broken','null','[]','42','{"progress":{"kills":"999"},"upgrades":{"plating":999}}'])assert.ok(Number.isFinite(parseSave(raw).progress.kills));
     const save=parseSave(null);save.bank=100;assert.equal(purchase(save,'plating'),true);assert.equal(save.bank,30);assert.equal(purchase(save,'plating'),false);assert.deepEqual(parseSave(JSON.stringify(old)),old);
+  });
+  test('Bullets hit through their final travel segment, but never beyond lifetime',()=>{
+    const m=calm();m.weapons=[];const e=foe(m,'skitter',1620,1600,10);m.shoot(1600,1600,0,600,.02,1,0xffffff);m.tickShots(.05);assert.equal(e.hp,9);assert.equal(m.shots.length,0);
+    const far=calm();far.weapons=[];const outside=foe(far,'skitter',1640,1600,10);far.shoot(1600,1600,0,600,.02,1,0xffffff);far.tickShots(.05);assert.equal(outside.hp,10);
+  });
+  test('A lethal projectile stops subsequent mortar damage and rewards',()=>{
+    const m=calm();m.weapons=[];m.stats.hp=1;const e=foe(m,'crawler',1800,1600,1);m.shells.push({id:900,x:1800,y:1600,fromX:1600,fromY:1600,time:.01,damage:100,radius:100});m.shoot(1600,1600,0,0,1,2,0xffffff,true);step(m,.05);assert.equal(m.state,'ended');assert.equal(m.kills,0);assert.equal(e.hp,1);assert.equal(m.shells[0].time,.01);
+  });
+  test('Compass does not shorten extraction; timeout cannot be postponed by a reward',()=>{
+    const m=calm();m.weapons=[];m.collectItem('compass');m.extraction={x:1600,y:1600,progress:0};step(m,2.7);assert.equal(m.state,'running');step(m,.4);assert.equal(m.won,true);
+    for(const reward of ['xp','item']){const run=calm();run.elapsed=719.99;if(reward==='xp')run.xp=100;else run.loot.push({id:700,x:1600,y:1600,item:'magnet'});step(run,.05);assert.equal(run.state,'ended');assert.equal(run.won,false);}
+  });
+  test('Weapon stats refresh after modifiers and Prism; invalid frame times are ignored',()=>{
+    const m=calm(),w=m.weapons[0];const initial=m.weaponStats(w);install(m,'pistol_twin',2);assert.equal(m.weaponStats(w).count,2);assert.equal(initial.count,0);m.collectItem('prism');assert.equal(m.weaponStats(w).count,3);
+    const snapshot=JSON.stringify(m);for(const dt of [0,-1,NaN,Infinity])m.tick(dt,{x:1,y:0,dash:true});assert.equal(JSON.stringify(m),snapshot);
+  });
+  test('New runs reset inventory, revival and cooldowns while preserving earned unlocks',()=>{
+    const previous=calm(false);previous.collectItem('phoenix');previous.phoenixUsed=true;previous.player.dashCooldown=2;previous.kills=20;previous.metrics.dashes=7;previous.end(false,'Test');const next=new GameModel('expedition',undefined,seeded(),previous.progress());assert.equal(next.stats.hp,10);assert.deepEqual(next.items,{});assert.equal(next.phoenixUsed,false);assert.equal(next.player.dashCooldown,0);assert.equal(next.weapons.length,1);assert.ok(next.unlockedWeapons().includes('scatter')&&next.unlockedWeapons().includes('saw'));
+  });
+  test('Sprite pool reuses bounded slots and ignores duplicate releases',()=>{
+    let created=0;const make=()=>({active:true,setPosition(){return this;},setDepth(){return this;},setActive(value){this.active=value;return this;},setVisible(value){this.visible=value;return this;},setAlpha(value){this.alpha=value;return this;},setScale(){return this;},setRotation(value){this.rotation=value;return this;},clearTint(){return this;}});
+    const pool=new SpritePool({add:{image(){created++;return make();}}},'test',2,1),first=pool.acquire(0,0),second=pool.acquire(0,0);assert.equal(pool.acquire(0,0),undefined);pool.release(first);pool.release(first);assert.equal(pool.acquire(1,1),first);assert.equal(pool.acquire(0,0),undefined);assert.equal(first.rotation,0);assert.equal(first.visible,true);pool.release(second);assert.equal(pool.acquire(0,0),second);assert.equal(created,2);
+  });
+  test('Audio respects mute, suspended playback, voice cap and teardown',()=>{
+    const previous=globalThis.AudioContext;let context;const oscillators=[];
+    const parameter=()=>({value:0,setValueAtTime(){},exponentialRampToValueAtTime(){},setTargetAtTime(){}});
+    globalThis.AudioContext=class {state='running';currentTime=10;destination={};constructor(){context=this;}createGain(){return {gain:parameter(),connect(){},disconnect(){}};}createOscillator(){const o={frequency:parameter(),connect(){},disconnect(){},start(){},stop(){},onended:null};oscillators.push(o);return o;}close(){this.state='closed';return Promise.resolve();}};
+    try{const audio=new AudioBus();audio.play('pistol');assert.equal(oscillators.length,0);audio.unlock();audio.setMuted(true);audio.play('pistol');assert.equal(oscillators.length,0);audio.setMuted(false);context.state='suspended';audio.play('pistol');assert.equal(oscillators.length,0);context.state='running';for(let i=0;i<20;i++)audio.play(`cue-${i}`);assert.equal(oscillators.length,12);oscillators[0].onended();audio.play('another');assert.equal(oscillators.length,13);audio.destroy();assert.equal(context.state,'closed');}finally{globalThis.AudioContext=previous;}
+  });
+  test('Sixteen seeded normal-health runs preserve invariants through pause, damage and rewards',()=>{
+    for(const mode of ['skirmish','expedition'])for(let seed=1;seed<=8;seed++){
+      const random=seeded(seed),run=new GameModel(mode,undefined,random,unlocked());let frames=0,angle=0;
+      while(run.state!=='ended'&&frames<15000){
+        if(run.state==='upgrade'||run.state==='chest'){assert.equal(run.choose(Math.floor(random()*run.choices.length)),true);continue;}
+        if(frames%80===0)angle=random()*Math.PI*2;
+        if(frames%400===0){run.pause();const before=JSON.stringify(run);run.tick(.05,{x:1,y:1,dash:true});assert.equal(JSON.stringify(run),before);run.pause();}
+        run.tick(.05,{x:Math.cos(angle),y:Math.sin(angle),dash:frames%65===0});frames++;
+        assert.ok(Number.isFinite(run.player.x)&&Number.isFinite(run.player.y));assert.ok(run.player.x>=18&&run.player.x<=3182&&run.player.y>=18&&run.player.y<=3182);assert.ok(run.stats.hp>=0&&run.stats.hp<=run.stats.maxHp);assert.ok(run.scrap>=0&&run.xp>=0);assert.ok(run.enemies.length<=LIMITS.enemies&&run.effects.length<=LIMITS.effects&&run.pickups.length<=LIMITS.pickups);assert.ok(run.weapons.length<=4);
+      }
+      assert.equal(run.state,'ended');const banked=run.banked;run.end(true,'duplicate settlement');assert.equal(run.banked,banked);
+    }
   });
   // High-health deterministic run exercises late game correctness, not player difficulty.
   for(const mode of ['skirmish','expedition'])test(`Full ${mode} simulation, item collection and entity bounds`,()=>{

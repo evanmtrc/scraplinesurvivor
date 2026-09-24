@@ -1,4 +1,4 @@
-# Scrapline Survivor — Frontier 0.4
+# Scrapline Survivor — Frontier 0.4.1
 
 A browser-first top-down survivor built with Phaser, TypeScript, and Vite. Assemble a four-weapon salvager, read the horde's attack warnings, defeat the Scrap Tyrant, and extract with your salvage.
 
@@ -13,6 +13,12 @@ A browser-first top-down survivor built with Phaser, TypeScript, and Vite. Assem
 - **Salvage:** crates physically drop one passive item, never weapons or weapon upgrades. Sixteen achievement-unlocked items have fixed Common–Legendary rarities, distinct textures, stack limits, and effects such as dash blasts, critical chains, healing pulses, shields, and one-use revival. Rerolls now belong to level-up choices.
 - **Workshop and achievements:** bank salvage for three capped starting upgrades. Seventeen achievements unlock weapons and item drop eligibility. Progress updates during runs and saves in this browser; existing workshop saves are migrated.
 - **Presentation:** compact corner HUD, optional minimap, full loadout inspection in pause, responsive menus, item and weapon icons, enemy guide, and achievement collection. The armored salvager and creature style are preserved.
+
+## Maintenance update 0.4.1
+
+Starting health is now **10 HP**, plus workshop plating. The salvager remains upright while moving and targeting; only the boots animate. This update fixes input cleanup, final-segment bullet collisions, post-death damage, extraction timing, and reward/timeout edge cases. It also caches weapon modifiers, reuses collision buffers and sprite slots, and avoids repeated paused rendering and unchanged save writes. No new gameplay systems are added.
+
+The regression suite now includes 27 groups, 16 seeded normal-health runs, full-length simulations, and audio/sprite-pool lifecycle checks. These tests do not certify a bug-free game or a particular browser frame rate.
 
 ## Controls
 

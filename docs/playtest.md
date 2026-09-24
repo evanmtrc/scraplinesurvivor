@@ -1,6 +1,6 @@
-# Frontier 0.4 playtest checklist
+# Frontier 0.4.1 playtest checklist
 
-1. Open the deployed page and check **BUILD 0.4**. Existing workshop money/ranks should be intact.
+1. Open the deployed page and check **BUILD 0.4.1**. Existing workshop money/ranks should be intact.
 2. Open **Armory & unlocks**. Inspect weapon requirements, all 16 item portraits and rarities, and achievement progress. New saves begin with the pistol; starting a run unlocks the first two crate items.
 3. Start Skirmish. Check the compact HUD in a small window. Inspect Build, back to pause, then Esc to resume. Detailed inventory should never leave combat running under a menu.
 4. Move in eight directions; dash; change targeting. Toggle the minimap with V. Move between tabs and confirm automatic pause. Pause settings remain reachable with keyboard focus.
@@ -13,3 +13,11 @@
 11. Test smaller desktop windows and phone landscape. Modals should scroll/reflow without clipped actions, while the HUD leaves the center open. Check actual browser rendering frame rate during dense combat.
 
 `npm test` covers simulation and persistence rules. `npm run build` checks TypeScript and produces the Pages bundle. Tests with boosted health are not a normal-health difficulty benchmark.
+
+## Maintenance regression checks
+
+- Start both modes: 10 HP before workshop/item bonuses. Move in all directions while targets change; the body and boots stay upright.
+- Open pause/Build/level-up while moving, release movement, then resume. Repeat touch release outside the canvas; no stale movement/dash should remain.
+- Change sound/minimap settings while paused. Resume and confirm normal rendering and controls.
+- Extraction always requires three seconds, even with Survey Compass. A reward at the deadline must not postpone timeout.
+- Watch dense fights for missing replacement sprites, bullets failing at their last frame, and hits/rewards after death.

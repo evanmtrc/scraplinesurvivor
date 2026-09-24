@@ -9,21 +9,21 @@ import { ENEMIES, LIMITS, RARITY_COLORS, WEAPONS, WEAPON_IDS, WORLD, type Mode }
 import { purchase, readSave, writeSave, type SaveData } from '../game/SaveData';
 import { GameUI } from '../systems/GameUI';
 import { SpritePool } from '../systems/SpritePool';
-type Layer = { pool:SpritePool; sprites:Map<number,Phaser.GameObjects.Image> };
+type Layer = { pool:SpritePool; sprites:Map<number,Phaser.GameObjects.Image>; live:Set<number> };
 export class GameScene extends Phaser.Scene {
   private model!:GameModel;private save!:SaveData;private ui!:GameUI;private audio!:AudioBus;
   private body!:Phaser.GameObjects.Image;private boots!:Phaser.GameObjects.Image;
   private cursor!:Phaser.Types.Input.Keyboard.CursorKeys;private keys!:Record<'W'|'A'|'S'|'D',Phaser.Input.Keyboard.Key>;
   private layers:Record<string,Layer>={};private ground!:Phaser.GameObjects.Graphics;private fx!:Phaser.GameObjects.Graphics;private radar!:Phaser.GameObjects.Graphics;
   private floats:Phaser.GameObjects.Text[]=[];private label!:Phaser.GameObjects.Text;private uiClock=0;private dashQueued=false;private settled=false;private hitSeen=0;
-  private saveClock=0;
+  private saveClock=0;private savedSnapshot='';
   private stick={active:false,id:0,x:0,y:0,dx:0,dy:0};
   constructor(){super('Game');}
   create():void{
     createArt(this);createItemArt(this);this.drawWorld();this.save=readSave();this.audio=new AudioBus(this.save.muted);
     this.model=new GameModel('expedition',this.save.upgrades,Math.random,this.save.progress);this.model.metrics.deployments=0;this.model.state='briefing';
     this.ground=this.add.graphics().setDepth(1);this.fx=this.add.graphics().setDepth(12);this.radar=this.add.graphics().setScrollFactor(0).setDepth(30);
-    for(const [name,texture,limit,depth] of [['enemies','crawler',LIMITS.enemies,5],['shots','bullet',LIMITS.projectiles+LIMITS.hostile,8],['pickups','xp',LIMITS.pickups,2],['chests','chest',20,3],['loot','item-magnet',30,4],['drones','saw',16,10],['shells','shell',20,10]] as const)this.layers[name]={pool:new SpritePool(this,texture,limit,depth),sprites:new Map()};
+    for(const [name,texture,limit,depth] of [['enemies','crawler',LIMITS.enemies,5],['shots','bullet',LIMITS.projectiles+LIMITS.hostile,8],['pickups','xp',LIMITS.pickups,2],['chests','chest',20,3],['loot','item-magnet',30,4],['drones','saw',16,10],['shells','shell',20,10]] as const)this.layers[name]={pool:new SpritePool(this,texture,limit,depth),sprites:new Map(),live:new Set()};
     this.boots=this.add.image(this.model.player.x,this.model.player.y,'boots').setDepth(8.5);
     this.body=this.add.image(this.model.player.x,this.model.player.y,'salvager').setDepth(9);
     this.cameras.main.setBounds(0,0,WORLD,WORLD).startFollow(this.body,true,0.14,0.14);
@@ -32,7 +32,7 @@ export class GameScene extends Phaser.Scene {
     const refresh=()=>{this.syncProgress();this.settle();this.ui.render(this.model,this.save);};
     this.ui=new GameUI({
       start:mode=>{this.audio.unlock();this.start(mode);},
-      pause:()=>{this.model.pause();this.stick.active=false;this.cameras.main.shakeEffect.reset();refresh();},
+      pause:()=>{this.model.pause();this.clearMovement();this.cameras.main.shakeEffect.reset();refresh();},
       target:()=>{this.model.cycleTarget();refresh();},choose:index=>{this.model.choose(index);refresh();},reroll:()=>{this.model.reroll();refresh();},
       dash:()=>{this.audio.unlock();this.dashQueued=true;},
       mute:()=>{this.save.muted=!this.save.muted;this.audio.unlock();this.audio.setMuted(this.save.muted);this.persist();refresh();},
@@ -44,7 +44,7 @@ export class GameScene extends Phaser.Scene {
     }, key=>this.textures.getBase64(key));
     const onKey=(event:KeyboardEvent)=>{
       this.audio.unlock();if(event.repeat)return;
-      if(event.code==='Escape'||event.code==='KeyP'){event.preventDefault();if(this.ui.closeSubview())return;this.model.pause();this.stick.active=false;this.cameras.main.shakeEffect.reset();}
+      if(event.code==='Escape'||event.code==='KeyP'){event.preventDefault();if(this.ui.closeSubview())return;this.model.pause();this.clearMovement();this.cameras.main.shakeEffect.reset();}
       if(event.code==='Space'&&this.model.state==='running'){event.preventDefault();this.dashQueued=true;}
       if(event.code==='KeyV'){this.save.showMap=!this.save.showMap;this.persist();this.drawRadar();}
       if(event.code==='KeyT')this.model.cycleTarget();
@@ -53,19 +53,20 @@ export class GameScene extends Phaser.Scene {
       if(['Digit1','Digit2','Digit3'].includes(event.code))this.model.choose(Number(event.code.slice(-1))-1);
       refresh();
     };
-    const blur=()=>{this.syncProgress();this.persist();this.stick.active=false;this.dashQueued=false;if(this.model.state==='running'){this.model.pause();this.cameras.main.shakeEffect.reset();refresh();}};
+    const blur=()=>{this.syncProgress();this.persist();this.clearMovement();if(this.model.state==='running'){this.model.pause();this.cameras.main.shakeEffect.reset();refresh();}};
     const visibility=()=>{if(document.hidden)blur();};
     const unlock=()=>this.audio.unlock();
     window.addEventListener('keydown',onKey);window.addEventListener('blur',blur);document.addEventListener('visibilitychange',visibility);window.addEventListener('pointerdown',unlock);
     this.input.addPointer(1);
     this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>{if(p.wasTouch&&p.x<480&&this.model.state==='running')this.stick={active:true,id:p.id,x:p.x,y:p.y,dx:0,dy:0};});
     this.input.on('pointermove',(p:Phaser.Input.Pointer)=>{if(this.stick.active&&p.id===this.stick.id){const dx=p.x-this.stick.x,dy=p.y-this.stick.y,length=Math.max(36,Math.hypot(dx,dy));this.stick.dx=dx/length;this.stick.dy=dy/length;}});
-    this.input.on('pointerup',(p:Phaser.Input.Pointer)=>{if(p.id===this.stick.id)this.stick.active=false;});
+    const releasePointer=(p:Phaser.Input.Pointer)=>{if(p.id===this.stick.id)this.stick.active=false;};
+    this.input.on('pointerup',releasePointer);this.input.on('pointerupoutside',releasePointer);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN,()=>{window.removeEventListener('keydown',onKey);window.removeEventListener('blur',blur);window.removeEventListener('pointerdown',unlock);document.removeEventListener('visibilitychange',visibility);this.ui.destroy();this.audio.destroy();});
     this.draw();refresh();
   }
   private start(mode:Mode):void{
-    const targeting=this.model.targeting;this.model=new GameModel(mode,this.save.upgrades,Math.random,this.save.progress);this.model.targeting=targeting;this.settled=false;this.dashQueued=false;this.stick.active=false;this.hitSeen=0;
+    const targeting=this.model.targeting;this.model=new GameModel(mode,this.save.upgrades,Math.random,this.save.progress);this.model.targeting=targeting;this.settled=false;this.clearMovement();this.hitSeen=0;
     this.cameras.main.shakeEffect.reset();this.body.setPosition(this.model.player.x,this.model.player.y);this.cameras.main.centerOn(this.model.player.x,this.model.player.y);
     this.syncProgress();this.ui.resetView();this.draw();this.ui.render(this.model,this.save);this.audio.play('install');
   }
@@ -78,31 +79,37 @@ export class GameScene extends Phaser.Scene {
     const rewards=[...WEAPON_IDS.filter(id=>ids.has(WEAPON_UNLOCKS[id]??'')).map(id=>WEAPONS[id].name),...ITEM_IDS.filter(id=>ids.has(ITEMS[id].unlock)).map(id=>ITEMS[id].name)];
     this.model.unlockNotice=`UNLOCKED · ${rewards.slice(0,2).join(' + ')}${rewards.length>2?` +${rewards.length-2} more`:''}`;this.model.unlockTime=12;this.model.sound('level');this.persist();
   }
-  private persist():void{if(!writeSave(this.save))this.model.notify('Browser storage unavailable — progress lasts for this session.');}
+  private clearMovement():void{this.stick.active=false;this.dashQueued=false;this.input.keyboard?.resetKeys();}
+  private persist():void{const snapshot=JSON.stringify(this.save);if(snapshot===this.savedSnapshot)return;if(writeSave(this.save))this.savedSnapshot=snapshot;else this.model.notify('Browser storage unavailable — progress lasts for this session.');}
   private settle():void{
     if(this.model.state!=='ended'||this.settled)return;this.settled=true;
     this.save.bank+=this.model.banked;this.save.runs++;if(this.model.won)this.save.wins++;
     this.save.bestKills=Math.max(this.save.bestKills,this.model.kills);this.save.bestTime=Math.max(this.save.bestTime,Math.floor(this.model.elapsed));this.persist();
   }
   update(_time:number,delta:number):void{
+    if(this.model.state!=='running'){for(const sound of this.model.sounds)this.audio.play(sound);this.model.sounds=[];return;}
     const x=Number(this.keys.D.isDown||this.cursor.right.isDown)-Number(this.keys.A.isDown||this.cursor.left.isDown),y=Number(this.keys.S.isDown||this.cursor.down.isDown)-Number(this.keys.W.isDown||this.cursor.up.isDown);
     this.model.tick(delta/1000,{x:x||(this.stick.active?this.stick.dx:0),y:y||(this.stick.active?this.stick.dy:0),dash:this.dashQueued});this.dashQueued=false;
     if(this.model.hitPulse>this.hitSeen&&!this.save.reducedMotion)this.cameras.main.shake(100,0.003);
-    this.hitSeen=this.model.hitPulse;this.syncProgress();this.settle();
-    this.saveClock+=delta;if(this.saveClock>5000){this.saveClock=0;this.persist();}
+    this.hitSeen=this.model.hitPulse;
+    if(this.model.state!=='running')this.clearMovement();
+    this.saveClock+=delta;if(this.saveClock>5000){this.saveClock=0;this.syncProgress();this.persist();}
     for(const sound of this.model.sounds)this.audio.play(sound);this.model.sounds=[];
     this.draw();this.uiClock+=delta;
-    if(this.uiClock>80||this.model.state!=='running'){this.uiClock=0;this.ui.render(this.model,this.save);}
+    if(this.uiClock>80||this.model.state!=='running'){this.uiClock=0;this.syncProgress();this.settle();this.ui.render(this.model,this.save);}
   }
   private sync<T extends Entity>(name:string,entities:T[],style:(sprite:Phaser.GameObjects.Image,e:T)=>void):void{
-    const layer=this.layers[name],live=new Set<number>();
-    for(const entity of entities){live.add(entity.id);let sprite=layer.sprites.get(entity.id);if(!sprite){sprite=layer.pool.acquire(entity.x,entity.y);if(!sprite)continue;layer.sprites.set(entity.id,sprite);}sprite.setPosition(entity.x,entity.y);style(sprite,entity);}
+    const layer=this.layers[name],live=layer.live;live.clear();
+    for(const entity of entities)live.add(entity.id);
+    // Free old sprites before acquiring replacements, including at the pool cap.
     for(const [id,sprite] of layer.sprites)if(!live.has(id)){layer.pool.release(sprite);layer.sprites.delete(id);}
+    for(const entity of entities){let sprite=layer.sprites.get(entity.id);if(!sprite){sprite=layer.pool.acquire(entity.x,entity.y);if(!sprite)continue;layer.sprites.set(entity.id,sprite);}sprite.setPosition(entity.x,entity.y);style(sprite,entity);}
+
   }
   private draw():void{
     const m=this.model,p=m.player,time=m.elapsed;
-    this.body.setPosition(p.x,p.y+(p.moving&&!this.save.reducedMotion?Math.sin(time*18)*0.7:0)).setRotation(p.angle+Math.PI/2).setAlpha(p.invulnerable>0&&Math.floor(time*16)%2?0.5:1);
-    this.boots.setPosition(p.x,p.y).setRotation(p.moveAngle+Math.PI/2).setScale(1,p.moving&&!this.save.reducedMotion?1+Math.sin(time*18)*0.045:1).setAlpha(this.body.alpha);
+    this.body.setPosition(p.x,p.y).setRotation(0).setAlpha(p.invulnerable>0&&Math.floor(time*16)%2?0.5:1);
+    this.boots.setPosition(p.x,p.y).setRotation(0).setScale(1,p.moving&&!this.save.reducedMotion?1+Math.sin(time*18)*0.045:1).setAlpha(this.body.alpha);
     this.sync('enemies',m.enemies,(sprite,e)=>{
       sprite.setTexture(e.kind).setScale(e.elite?1.4:1).setRotation(e.kind==='shield'?time:Math.atan2(p.y-e.y,p.x-e.x)+Math.PI/2);
       if(e.flash>0)sprite.setTintFill(0xfff1d4);else sprite.clearTint();

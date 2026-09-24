@@ -1,4 +1,5 @@
 export const WORLD = 3200;
+export const STARTING_HP = 10;
 export const WEAPON_IDS = ['pistol', 'scatter', 'arc', 'saw', 'mortar', 'rail'] as const;
 export type WeaponId = typeof WEAPON_IDS[number];
 export const WEAPONS: Record<WeaponId, { name: string; short: string; color: number; cooldown: number; damage: number; range: number; description: string }> = {

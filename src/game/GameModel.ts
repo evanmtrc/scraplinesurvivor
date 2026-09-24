@@ -1,4 +1,4 @@
-import { ENEMIES, LIMITS, MODES, WEAPONS, WEAPON_IDS, WORLD, segmentDistance, type EnemyKind, type Mode, type WeaponId } from './content.js';
+import { ENEMIES, LIMITS, MODES, WEAPONS, WEAPON_IDS, WORLD, STARTING_HP, segmentDistance, type EnemyKind, type Mode, type WeaponId } from './content.js';
 import type { SaveData } from './SaveData.js';
 import { achieved, emptyProgress, mergeProgress, WEAPON_UNLOCKS, type Progress } from './Progression.js';
 import { ITEMS, ITEM_IDS, type ItemId } from './Items.js';
@@ -20,6 +20,7 @@ export type Stats = { maxHp: number; hp: number; speed: number; pickup: number; 
 export type Input = { x: number; y: number; dash: boolean };
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const dist = (a: {x:number;y:number}, b:{x:number;y:number}) => Math.hypot(a.x - b.x, a.y - b.y);
+const MOD_BY_ID = new Map(WEAPON_MODS.map(mod=>[mod.id,mod]));
 const MODIFIERS = [
   ['damage', 'Overcharged cells', 'All weapon damage +15%.'], ['rate', 'Cooling manifold', 'All weapons fire 12% faster.'],
   ['speed', 'Runner servos', 'Move speed +10% (up to 2× base).'], ['pickup', 'Salvage magnet', 'Pickup and attraction radius +20.'],
@@ -43,10 +44,12 @@ export class GameModel {
   bossSpawned = false; bossDefeated = false; extraction: { x: number; y: number; progress: number } | null = null;
   won = false; result = ''; banked = 0; hitPulse = 0;
   rerolls = 0;
+  private weaponCache=new WeakMap<Weapon,{count:number;prism:number;stats:WeaponStats}>();
+  private shotHits:Enemy[]=[];
   private supplyRemaining = 0; private uid = 1; private spawnClock = 0.9; private eliteClock: number; private eliteWarned = false; private bossWarned=false;
   constructor(public mode: Mode, upgrades: SaveData['upgrades'] = {plating:0,magnet:0,supplies:0}, public random = Math.random, private baseline:Progress=emptyProgress()) {
     this.baseline={...baseline};this.metrics.deployments=1;
-    this.stats = { maxHp: 5 + upgrades.plating, hp: 5 + upgrades.plating, speed: 235, pickup: 28 + upgrades.magnet * 6, damage: 1, rate: 1, crit: 0.05, armor: 0, xpBonus: 1 };
+    this.stats = { maxHp: STARTING_HP + upgrades.plating, hp: STARTING_HP + upgrades.plating, speed: 235, pickup: 28 + upgrades.magnet * 6, damage: 1, rate: 1, crit: 0.05, armor: 0, xpBonus: 1 };
     this.scrap = upgrades.supplies * 10; this.supplyRemaining = this.scrap;
     this.eliteClock = mode === 'skirmish' ? 22 : 60;
     this.nodes = [{id:this.uid++,x:1810,y:1360,progress:0,done:false,alerted:false},{id:this.uid++,x:950,y:1940,progress:0,done:false,alerted:false},{id:this.uid++,x:2290,y:2160,progress:0,done:false,alerted:false}];
@@ -59,9 +62,11 @@ export class GameModel {
   unlockedWeapons():WeaponId[] {const p=this.progress();return WEAPON_IDS.filter(id=>achieved(p,WEAPON_UNLOCKS[id]));}
   itemCount(id:ItemId):number {return this.items[id]??0;}
   weaponStats(w:Weapon):WeaponStats {
-    const result:WeaponStats={damage:1,rate:1,count:this.itemCount('prism'),pierce:0,range:0,slow:0,blast:0,orbit:0,width:0,shred:0};
-    for(const installed of w.mods){const mod=WEAPON_MODS.find(m=>m.id===installed.id);if(mod)result[mod.stat]+=mod.values[installed.rarity];}
-    result.shred=Math.min(0.75,result.shred);return result;
+    const prism=this.itemCount('prism'),cached=this.weaponCache.get(w);
+    if(cached&&cached.count===w.mods.length&&cached.prism===prism)return cached.stats;
+    const result:WeaponStats={damage:1,rate:1,count:prism,pierce:0,range:0,slow:0,blast:0,orbit:0,width:0,shred:0};
+    for(const installed of w.mods){const mod=MOD_BY_ID.get(installed.id);if(mod)result[mod.stat]+=mod.values[installed.rarity];}
+    result.shred=Math.min(0.75,result.shred);Object.freeze(result);this.weaponCache.set(w,{count:w.mods.length,prism,stats:result});return result;
   }
   sawLayout():{count:number;radius:number;size:number;speed:number} {const w=this.weapons.find(w=>w.id==='saw');if(!w)return {count:0,radius:73,size:17,speed:2.8};const s=this.weaponStats(w);return {count:1+s.count,radius:73+s.orbit,size:17+s.orbit/2,speed:2.8*s.rate};}
   pause(): void { if (this.state === 'running') this.state = 'paused'; else if (this.state === 'paused') this.state = 'running'; }
@@ -78,8 +83,8 @@ export class GameModel {
     this.effects.push({id:this.uid++,kind,x,y,color,radius,text,tx,ty,life,maxLife:life});
   }
   tick(delta: number, input: Input): void {
-    if (this.state !== 'running') return;
-    const dt = clamp(delta, 0, 0.05);
+    if (this.state !== 'running'||!Number.isFinite(delta)||delta<=0) return;
+    const dt = Math.min(delta,0.05);
     this.elapsed += dt; this.unlockTime=Math.max(0,this.unlockTime-dt); this.toastTime = Math.max(0, this.toastTime - dt); this.hitPulse = Math.max(0, this.hitPulse - dt * 3);
     this.effects = this.effects.filter(e => (e.life -= dt) > 0);
     const p = this.player;
@@ -95,12 +100,15 @@ export class GameModel {
     p.x = clamp(p.x,18,WORLD-18); p.y = clamp(p.y,18,WORLD-18);
     this.director(dt); this.tickEnemies(dt);
     if (this.state !== 'running') return;
-    this.tickItems(dt); this.tickWeapons(dt); this.tickShots(dt); this.tickShells(dt);
+    this.tickItems(dt); this.tickWeapons(dt); this.tickShots(dt);
+    if(this.state!=='running')return;
+    this.tickShells(dt);
     if (this.state !== 'running') return;
     this.tickPickups(dt); this.tickObjectives(dt);
-    if (this.state !== 'running') return;
+    if((this.state as RunState)==='ended')return;
+    if(this.elapsed>=MODES[this.mode].deadline){this.end(false,'Extraction window missed');return;}
+    if(this.state!=='running')return;
     this.checkLevel();
-    if (this.elapsed >= MODES[this.mode].deadline && this.state === 'running') this.end(false, 'Extraction window missed');
   }
   private director(dt: number): void {
     this.spawnClock -= dt;
@@ -272,17 +280,20 @@ export class GameModel {
   }
   private shoot(x:number,y:number,angle:number,speed:number,ttl:number,damage:number,color:number,hostile=false,radius=4,pierce=0,shred=0): void {
     const limit=hostile?LIMITS.hostile:LIMITS.projectiles;
-    if(this.shots.filter(s=>s.hostile===hostile).length>=limit)return;
+    let active=0;for(const shot of this.shots)if(shot.ttl>0&&shot.hostile===hostile&&++active>=limit)return;
     this.shots.push({id:this.uid++,x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,ttl,damage,color,hostile,radius,pierce,hits:new Set<number>(),shred});
   }
   private tickShots(dt:number):void {
     for(const s of this.shots) {
-      const x=s.x,y=s.y;s.x+=s.vx*dt;s.y+=s.vy*dt;s.ttl-=dt;
       if(s.ttl<=0)continue;
+      const x=s.x,y=s.y,travel=Math.min(dt,s.ttl);s.x+=s.vx*travel;s.y+=s.vy*travel;s.ttl-=dt;
       if(s.hostile) { if(segmentDistance(this.player.x,this.player.y,x,y,s.x,s.y)<13+s.radius){this.hurt(s.damage);s.ttl=0;if(this.state!=='running')break;} }
       else {
-        const hits=this.enemies.filter(e=>e.hp>0&&!s.hits.has(e.id)&&segmentDistance(e.x,e.y,x,y,s.x,s.y)<e.radius+s.radius).sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y));
-        for(const e of hits){s.hits.add(e.id);this.damage(e,s.damage);if(s.shred){e.exposed=Math.max(e.exposed,s.shred);e.exposureTime=3;}if(s.pierce--<=0){s.ttl=0;break;}}
+        const hits=this.shotHits;hits.length=0;
+        const left=Math.min(x,s.x),right=Math.max(x,s.x),top=Math.min(y,s.y),bottom=Math.max(y,s.y);
+        for(const e of this.enemies){const radius=e.radius+s.radius;if(e.hp<=0||s.hits.has(e.id)||e.x<left-radius||e.x>right+radius||e.y<top-radius||e.y>bottom+radius)continue;if(segmentDistance(e.x,e.y,x,y,s.x,s.y)<radius)hits.push(e);}
+        hits.sort((a,b)=>(a.x-x)**2+(a.y-y)**2-((b.x-x)**2+(b.y-y)**2));
+        for(const e of hits){if(e.hp<=0)continue;s.hits.add(e.id);this.damage(e,s.damage);if(s.shred){e.exposed=Math.max(e.exposed,s.shred);e.exposureTime=3;}if(s.pierce--<=0){s.ttl=0;break;}}
       }
     }
     this.shots=this.shots.filter(s=>s.ttl>0);this.enemies=this.enemies.filter(e=>e.hp>0);
@@ -292,7 +303,7 @@ export class GameModel {
     this.shells=this.shells.filter(s=>s.time>0);this.enemies=this.enemies.filter(e=>e.hp>0);
   }
   damage(e:Enemy,raw:number,allowProc=true):void {
-    if(e.hp<=0)return;const crit=allowProc&&this.random()<this.stats.crit;
+    if(this.state!=='running'||e.hp<=0)return;const crit=allowProc&&this.random()<this.stats.crit;
     const damage=raw*(crit?2:1)*(e.shielded?0.5:1)*(1+e.exposed);e.hp-=damage;e.flash=0.09;this.damageDealt+=damage;
     if(crit||e.elite||e.kind==='tyrant')this.effect('number',e.x,e.y-20,crit?0xffdb85:0xe0eeee,0,`${Math.round(damage)}`);
     this.effect('spark',e.x,e.y,ENEMIES[e.kind].color,8);
@@ -352,7 +363,7 @@ export class GameModel {
       const drop=this.loot.splice(i,1)[0],item=ITEMS[drop.item];
       this.state='chest';this.choices=[{id:`item-${drop.item}`,kind:'item',item:drop.item,title:item.name,rarity:item.rarity,description:this.itemCount(drop.item)>=item.cap?'Stack limit reached. Recycle this duplicate for 15 scrap.':item.description,tag:'RECOVERED ITEM'}];this.sound('chest');return;
     }
-    if(this.extraction){if(dist(this.extraction,this.player)<66)this.extraction.progress+=dt*(1+0.15*this.itemCount('compass'));else this.extraction.progress=Math.max(0,this.extraction.progress-dt);if(this.extraction.progress>=3)this.end(true,'Extraction complete');}
+    if(this.extraction){if(dist(this.extraction,this.player)<66)this.extraction.progress+=dt;else this.extraction.progress=Math.max(0,this.extraction.progress-dt);if(this.extraction.progress>=3)this.end(true,'Extraction complete');}
   }
   private shuffle<T>(list:T[]):T[]{const copy=[...list];for(let i=copy.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[copy[i],copy[j]]=[copy[j],copy[i]];}return copy;}
   rollItem(tier:number):ItemId {
