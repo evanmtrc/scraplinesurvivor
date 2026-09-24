@@ -1,26 +1,15 @@
-# Frontier playtest checklist
+# Frontier 0.4 playtest checklist
 
-## Fast browser pass
+1. Open the deployed page and check **BUILD 0.4**. Existing workshop money/ranks should be intact.
+2. Open **Armory & unlocks**. Inspect weapon requirements, all 16 item portraits and rarities, and achievement progress. New saves begin with the pistol; starting a run unlocks the first two crate items.
+3. Start Skirmish. Check the compact HUD in a small window. Inspect Build, back to pause, then Esc to resume. Detailed inventory should never leave combat running under a menu.
+4. Move in eight directions; dash; change targeting. Toggle the minimap with V. Move between tabs and confirm automatic pause. Pause settings remain reachable with keyboard focus.
+5. Reach level-ups. Weapon equipment cards have no rarity. Weapon-specific modifiers have explicit rarity and effects. Equip four weapons, then confirm no fifth is offered. Use level-up rerolls; they cost 20 then 40 scrap.
+6. Try extra pistol rounds and piercing, shotgun pellets/range/vulnerability, arc chains and longer slow, saw drone count and width, mortar salvos and blast radius, and rail extra beams/width. Check the installed modifier details in Build.
+7. Complete a salvage scan or kill an elite. Walk to its crate: it must drop an item on the ground, with a texture matching the collection. Walk onto the item and collect the one-card reward. No weapon/modifier choices should appear here.
+8. Verify item-specific effects across runs: dash blast, heal pulse, chill pulse, retaliation, critical arc, kill-count heal, extra projectiles, recharging shield, reactor and one-use revival. Use Build to see stack counts and a spent Phoenix Core.
+9. Earn an achievement. Check that the unlock appears in the collection during the run and persists after refresh. Refresh ends the active run but should keep earned unlock progress.
+10. Play Expedition. Compare pressure with 0.3: scaling is 20% faster, while movement and the ten-minute Tyrant arrival are unchanged. Check extraction countdown and timeout.
+11. Test smaller desktop windows and phone landscape. Modals should scroll/reflow without clipped actions, while the HUD leaves the center open. Check actual browser rendering frame rate during dense combat.
 
-1. Hard refresh the Pages build if needed. Confirm **FRONTIER OPERATIONS // BUILD 0.3** in the hangar.
-2. Open the field guide. Inspect eight regular enemy portraits plus the Tyrant. Scroll to the arsenal and return.
-3. Start **Skirmish**. Check the armored salvager and the original movement feel in eight directions and near world edges.
-4. Use dash to cross an enemy lane; confirm the cooldown and brief immunity. Cycle targeting with T and the button.
-5. Pause with Esc/P/button. Enemies, projectiles, clock, and HP should freeze. Resume and switch tabs to check automatic pause. Change sound and reduced motion.
-6. Collect XP. Choose with both a number key and a mouse click. Get four weapons; confirm no fifth weapon is offered. Try each weapon across several runs.
-7. Watch the different enemy attack warnings. Prioritize a shield drone and inspect damage to its former allies. Kill a splitter and watch its skitters.
-8. Hold near a green map marker to recover a cache. Kill an elite and collect its gold chest. Check quality rewards and reroll affordability/limit.
-9. Fight the Tyrant at 2:00. Kill it, follow the cyan arrow, and hold extraction. In another run, verify timeout at 3:00.
-10. Open results, inspect banked scrap, visit the workshop, buy an affordable upgrade, then start again. Confirm it applies to the next run and survives refresh.
-
-## Longer pass
-
-- Play a full Expedition with normal health from a fresh workshop. Record first upgrade time, deaths, build, level, boss kill time, and extraction outcome.
-- Check whether later levels interrupt too often, whether weapons feel distinct, and whether shield/bomber/charger tells remain readable in dense packs.
-- Inspect rendering frame rate and responsiveness on a lower-powered laptop and mobile landscape. Model simulation timing is not a browser performance measurement.
-- Exercise a long run near corners, resize/fullscreen, touch movement plus Dash, rapid pause/resume, and browser audio muted/unmuted.
-- Check menu overflow, text size, keyboard focus, and reduced motion with actual users.
-
-## Automated coverage
-
-Run `npm test` then `npm run build`. The full-run automated scenario starts with extra weapons and boosted health to reach late-game behavior reliably. It verifies simulation integrity under load; it does not certify normal-health difficulty, audio quality, rendering performance, or touch ergonomics.
+`npm test` covers simulation and persistence rules. `npm run build` checks TypeScript and produces the Pages bundle. Tests with boosted health are not a normal-health difficulty benchmark.

@@ -1,4 +1,4 @@
-# Scrapline Survivor — Frontier 0.3
+# Scrapline Survivor — Frontier 0.4
 
 A browser-first top-down survivor built with Phaser, TypeScript, and Vite. Assemble a four-weapon salvager, read the horde's attack warnings, defeat the Scrap Tyrant, and extract with your salvage.
 
@@ -6,13 +6,13 @@ A browser-first top-down survivor built with Phaser, TypeScript, and Vite. Assem
 
 ## What's playable
 
-- **Expedition:** Tyrant arrives at 10 minutes; extraction closes at 12 minutes.
+- **Expedition:** enemy introductions, health growth, and spawn pressure use a 20% faster scaling clock. Tyrant still arrives at 10 minutes; extraction closes at 12 minutes.
 - **Skirmish:** accelerated enemy introductions and XP, Tyrant at 2 minutes, deadline at 3 minutes. A short way to test builds.
-- **Six weapons / four slots:** Rust Pistol, Scattergun, Arc Welder, Saw Drone, Mortar Pod, and Rail Spike. Owned weapons reach level 8 and can gain quality from Common through Legendary.
+- **Six weapons / four slots:** Rust Pistol, Scattergun, Arc Welder, Saw Drone, Mortar Pod, and Rail Spike. Weapons have no rarity. Five are unlocked through achievements; the Rust Pistol is the starter. Each weapon has four specific upgrade families, with Common–Legendary upgrade rolls.
 - **Eight enemy types:** crawlers, skitters, bruisers, spitters, bombers, shield drones, chargers, and splitters. Distinct silhouettes and behaviors, stronger elites with guaranteed chests, and a multi-attack boss.
-- **Salvage:** XP, scrap, repair drops, magnetic surges, three map caches, chest rewards, and paid chest rerolls.
-- **Workshop:** bank salvage after a run for three capped starting upgrades. Records, workshop progress, sound, and reduced motion settings save in this browser.
-- **Presentation:** armored salvager with a cyan visor and separate moving boots, procedural creature art, attack telegraphs, damage feedback, synthesized audio, minimap, objective arrows, and a visual field guide.
+- **Salvage:** crates physically drop one passive item, never weapons or weapon upgrades. Sixteen achievement-unlocked items have fixed Common–Legendary rarities, distinct textures, stack limits, and effects such as dash blasts, critical chains, healing pulses, shields, and one-use revival. Rerolls now belong to level-up choices.
+- **Workshop and achievements:** bank salvage for three capped starting upgrades. Seventeen achievements unlock weapons and item drop eligibility. Progress updates during runs and saves in this browser; existing workshop saves are migrated.
+- **Presentation:** compact corner HUD, optional minimap, full loadout inspection in pause, responsive menus, item and weapon icons, enemy guide, and achievement collection. The armored salvager and creature style are preserved.
 
 ## Controls
 
@@ -24,6 +24,8 @@ A browser-first top-down survivor built with Phaser, TypeScript, and Vite. Assem
 | Pause / resume | Esc, P, or Pause button |
 | Choose upgrade | 1 / 2 / 3 or click a card |
 | Toggle audio | M or pause-menu sound button |
+| Toggle minimap | V or pause-menu map button |
+| Inspect build | Build button or pause → Loadout & items |
 | Retry after a run | R or Run again |
 | Touch movement | Drag the left half of the game; use the Dash button |
 
@@ -40,7 +42,7 @@ npm test
 npm run build
 ```
 
-`npm run build` checks TypeScript and creates `dist/`. There is no backend. Sprite art is generated in code and sound is synthesized after an input gesture. Clearing site data clears local workshop progress; it does not sync between devices. An active run is not saved across refreshes.
+`npm run build` checks TypeScript and creates `dist/`. There is no backend. Sprite art is generated in code and sound is synthesized after an input gesture. Clearing site data clears local workshop and achievement progress; it does not sync between devices. An active run is not saved across refreshes.
 
 ## Browser deployment
 
@@ -48,6 +50,6 @@ GitHub Pages is configured with **Settings → Pages → Source: GitHub Actions*
 
 ## Checks and next work
 
-`npm test` exercises the pure simulation: movement, target priorities, pause, dash immunity, XP carryover, weapon eligibility, all six weapons, swept hits, shields, splitting enemies, attack warnings, chest rerolls, elite loot, caps, extraction, timeout, and save validation. It also drives a deterministic full expedition through high enemy density with boosted test health. This is a correctness/performance check, not a human difficulty or browser frame-rate benchmark.
+`npm test` exercises achievement gates, migration, item-only crate drops, all 24 weapon upgrades and item effects, plus the pure simulation: movement, target priorities, pause, dash immunity, XP carryover, weapon eligibility, all six weapons, swept hits, shields, splitting enemies, attack warnings, upgrade rerolls, elite loot, caps, extraction, timeout, and save validation. It also drives a deterministic full expedition through high enemy density with boosted test health. This is a correctness/performance check, not a human difficulty or browser frame-rate benchmark.
 
-This build implements the core of design phases 3–6 plus a presentation pass. Balance, low-end/mobile performance, longer human playtests, and further content remain ongoing. See [current build spec](docs/build-spec-0.3.md), [architecture](docs/architecture.md), and [playtest checklist](docs/playtest.md). The [original prototype spec](docs/build-spec-0.1.md) is retained as history.
+This build implements the core of design phases 3–6 plus a presentation pass. Balance, low-end/mobile performance, longer human playtests, and further content remain ongoing. See [current build spec](docs/build-spec-0.4.md), [architecture](docs/architecture.md), and [playtest checklist](docs/playtest.md). The [original prototype spec](docs/build-spec-0.1.md) is retained as history.

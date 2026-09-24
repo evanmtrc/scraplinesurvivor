@@ -1,8 +1,11 @@
 import Phaser from 'phaser';
 import { GameModel, type Entity, type Enemy } from '../game/GameModel';
+import { createItemArt } from '../game/ItemArt';
+import { ITEMS, ITEM_IDS, itemTexture } from '../game/Items';
+import { ACHIEVEMENTS, achieved, WEAPON_UNLOCKS } from '../game/Progression';
 import { createArt } from '../game/Art';
 import { AudioBus } from '../game/AudioBus';
-import { ENEMIES, LIMITS, WEAPONS, WORLD, type Mode } from '../game/content';
+import { ENEMIES, LIMITS, RARITY_COLORS, WEAPONS, WEAPON_IDS, WORLD, type Mode } from '../game/content';
 import { purchase, readSave, writeSave, type SaveData } from '../game/SaveData';
 import { GameUI } from '../systems/GameUI';
 import { SpritePool } from '../systems/SpritePool';
@@ -13,19 +16,20 @@ export class GameScene extends Phaser.Scene {
   private cursor!:Phaser.Types.Input.Keyboard.CursorKeys;private keys!:Record<'W'|'A'|'S'|'D',Phaser.Input.Keyboard.Key>;
   private layers:Record<string,Layer>={};private ground!:Phaser.GameObjects.Graphics;private fx!:Phaser.GameObjects.Graphics;private radar!:Phaser.GameObjects.Graphics;
   private floats:Phaser.GameObjects.Text[]=[];private label!:Phaser.GameObjects.Text;private uiClock=0;private dashQueued=false;private settled=false;private hitSeen=0;
+  private saveClock=0;
   private stick={active:false,id:0,x:0,y:0,dx:0,dy:0};
   constructor(){super('Game');}
   create():void{
-    createArt(this);this.drawWorld();this.save=readSave();this.audio=new AudioBus(this.save.muted);
-    this.model=new GameModel('expedition',this.save.upgrades);this.model.state='briefing';
+    createArt(this);createItemArt(this);this.drawWorld();this.save=readSave();this.audio=new AudioBus(this.save.muted);
+    this.model=new GameModel('expedition',this.save.upgrades,Math.random,this.save.progress);this.model.metrics.deployments=0;this.model.state='briefing';
     this.ground=this.add.graphics().setDepth(1);this.fx=this.add.graphics().setDepth(12);this.radar=this.add.graphics().setScrollFactor(0).setDepth(30);
-    for(const [name,texture,limit,depth] of [['enemies','crawler',LIMITS.enemies,5],['shots','bullet',LIMITS.projectiles+LIMITS.hostile,8],['pickups','xp',LIMITS.pickups,2],['chests','chest',20,3],['drones','saw',4,10],['shells','shell',20,10]] as const)this.layers[name]={pool:new SpritePool(this,texture,limit,depth),sprites:new Map()};
+    for(const [name,texture,limit,depth] of [['enemies','crawler',LIMITS.enemies,5],['shots','bullet',LIMITS.projectiles+LIMITS.hostile,8],['pickups','xp',LIMITS.pickups,2],['chests','chest',20,3],['loot','item-magnet',30,4],['drones','saw',16,10],['shells','shell',20,10]] as const)this.layers[name]={pool:new SpritePool(this,texture,limit,depth),sprites:new Map()};
     this.boots=this.add.image(this.model.player.x,this.model.player.y,'boots').setDepth(8.5);
     this.body=this.add.image(this.model.player.x,this.model.player.y,'salvager').setDepth(9);
     this.cameras.main.setBounds(0,0,WORLD,WORLD).startFollow(this.body,true,0.14,0.14);
     this.label=this.add.text(840,118,'SECTOR MAP',{fontFamily:'monospace',fontSize:'9px',color:'#8aafad'}).setScrollFactor(0).setDepth(31);
     this.cursor=this.input.keyboard!.createCursorKeys();this.keys=this.input.keyboard!.addKeys('W,A,S,D') as typeof this.keys;
-    const refresh=()=>{this.settle();this.ui.render(this.model,this.save);};
+    const refresh=()=>{this.syncProgress();this.settle();this.ui.render(this.model,this.save);};
     this.ui=new GameUI({
       start:mode=>{this.audio.unlock();this.start(mode);},
       pause:()=>{this.model.pause();this.stick.active=false;this.cameras.main.shakeEffect.reset();refresh();},
@@ -33,21 +37,23 @@ export class GameScene extends Phaser.Scene {
       dash:()=>{this.audio.unlock();this.dashQueued=true;},
       mute:()=>{this.save.muted=!this.save.muted;this.audio.unlock();this.audio.setMuted(this.save.muted);this.persist();refresh();},
       motion:()=>{this.save.reducedMotion=!this.save.reducedMotion;this.cameras.main.shakeEffect.reset();this.persist();refresh();},
+      map:()=>{this.save.showMap=!this.save.showMap;this.persist();refresh();this.drawRadar();},
       fullscreen:()=>{if(document.fullscreenElement)void document.exitFullscreen().catch(()=>{});else void document.documentElement.requestFullscreen?.().catch(()=>{});},
       hangar:()=>{if(this.model.state==='ended'||this.model.state==='briefing'){this.model.state='briefing';this.ui.resetView();}else this.model.end(false,'Returned with field salvage');refresh();},
       buy:id=>{if(purchase(this.save,id)){this.persist();this.audio.play('install');}},
     }, key=>this.textures.getBase64(key));
     const onKey=(event:KeyboardEvent)=>{
       this.audio.unlock();if(event.repeat)return;
-      if(event.code==='Escape'||event.code==='KeyP'){event.preventDefault();this.model.pause();this.stick.active=false;this.cameras.main.shakeEffect.reset();}
+      if(event.code==='Escape'||event.code==='KeyP'){event.preventDefault();if(this.ui.closeSubview())return;this.model.pause();this.stick.active=false;this.cameras.main.shakeEffect.reset();}
       if(event.code==='Space'&&this.model.state==='running'){event.preventDefault();this.dashQueued=true;}
+      if(event.code==='KeyV'){this.save.showMap=!this.save.showMap;this.persist();this.drawRadar();}
       if(event.code==='KeyT')this.model.cycleTarget();
       if(event.code==='KeyM'){this.save.muted=!this.save.muted;this.audio.setMuted(this.save.muted);this.persist();}
       if(event.code==='KeyR'&&this.model.state==='ended'){this.start(this.model.mode);return;}
       if(['Digit1','Digit2','Digit3'].includes(event.code))this.model.choose(Number(event.code.slice(-1))-1);
       refresh();
     };
-    const blur=()=>{this.stick.active=false;this.dashQueued=false;if(this.model.state==='running'){this.model.pause();this.cameras.main.shakeEffect.reset();refresh();}};
+    const blur=()=>{this.syncProgress();this.persist();this.stick.active=false;this.dashQueued=false;if(this.model.state==='running'){this.model.pause();this.cameras.main.shakeEffect.reset();refresh();}};
     const visibility=()=>{if(document.hidden)blur();};
     const unlock=()=>this.audio.unlock();
     window.addEventListener('keydown',onKey);window.addEventListener('blur',blur);document.addEventListener('visibilitychange',visibility);window.addEventListener('pointerdown',unlock);
@@ -59,9 +65,18 @@ export class GameScene extends Phaser.Scene {
     this.draw();refresh();
   }
   private start(mode:Mode):void{
-    const targeting=this.model.targeting;this.model=new GameModel(mode,this.save.upgrades);this.model.targeting=targeting;this.settled=false;this.dashQueued=false;this.stick.active=false;this.hitSeen=0;
+    const targeting=this.model.targeting;this.model=new GameModel(mode,this.save.upgrades,Math.random,this.save.progress);this.model.targeting=targeting;this.settled=false;this.dashQueued=false;this.stick.active=false;this.hitSeen=0;
     this.cameras.main.shakeEffect.reset();this.body.setPosition(this.model.player.x,this.model.player.y);this.cameras.main.centerOn(this.model.player.x,this.model.player.y);
-    this.ui.resetView();this.draw();this.ui.render(this.model,this.save);this.audio.play('install');
+    this.syncProgress();this.ui.resetView();this.draw();this.ui.render(this.model,this.save);this.audio.play('install');
+  }
+  private syncProgress():void{
+    this.save.progress=this.model.progress();
+    const newly=ACHIEVEMENTS.filter(a=>achieved(this.save.progress,a.id)&&!this.save.announced.includes(a.id));
+    if(!newly.length)return;
+    for(const a of newly)this.save.announced.push(a.id);
+    const ids=new Set(newly.map(a=>a.id));
+    const rewards=[...WEAPON_IDS.filter(id=>ids.has(WEAPON_UNLOCKS[id]??'')).map(id=>WEAPONS[id].name),...ITEM_IDS.filter(id=>ids.has(ITEMS[id].unlock)).map(id=>ITEMS[id].name)];
+    this.model.unlockNotice=`UNLOCKED · ${rewards.slice(0,2).join(' + ')}${rewards.length>2?` +${rewards.length-2} more`:''}`;this.model.unlockTime=12;this.model.sound('level');this.persist();
   }
   private persist():void{if(!writeSave(this.save))this.model.notify('Browser storage unavailable — progress lasts for this session.');}
   private settle():void{
@@ -73,7 +88,8 @@ export class GameScene extends Phaser.Scene {
     const x=Number(this.keys.D.isDown||this.cursor.right.isDown)-Number(this.keys.A.isDown||this.cursor.left.isDown),y=Number(this.keys.S.isDown||this.cursor.down.isDown)-Number(this.keys.W.isDown||this.cursor.up.isDown);
     this.model.tick(delta/1000,{x:x||(this.stick.active?this.stick.dx:0),y:y||(this.stick.active?this.stick.dy:0),dash:this.dashQueued});this.dashQueued=false;
     if(this.model.hitPulse>this.hitSeen&&!this.save.reducedMotion)this.cameras.main.shake(100,0.003);
-    this.hitSeen=this.model.hitPulse;this.settle();
+    this.hitSeen=this.model.hitPulse;this.syncProgress();this.settle();
+    this.saveClock+=delta;if(this.saveClock>5000){this.saveClock=0;this.persist();}
     for(const sound of this.model.sounds)this.audio.play(sound);this.model.sounds=[];
     this.draw();this.uiClock+=delta;
     if(this.uiClock>80||this.model.state!=='running'){this.uiClock=0;this.ui.render(this.model,this.save);}
@@ -95,10 +111,11 @@ export class GameScene extends Phaser.Scene {
     this.sync('shots',m.shots,(sprite,s)=>sprite.setTexture(s.hostile?'hostile':'bullet').setTint(s.color).setRotation(Math.atan2(s.vy,s.vx)).setScale(s.hostile?1:1.1,s.hostile?1:0.7));
     this.sync('pickups',m.pickups,(sprite,item)=>sprite.setTexture(item.kind).clearTint().setScale(item.kind==='xp'?Math.min(1.5,1+Math.log2(item.value)*0.1):1).setRotation(item.kind==='xp'?Math.sin(time*2+item.id)*0.12:0));
     this.sync('chests',m.chests,(sprite,c)=>sprite.setTexture('chest').clearTint().setScale(this.save.reducedMotion?1:1+Math.sin(time*4)*0.04));
+    this.sync('loot',m.loot,(sprite,item)=>sprite.setTexture(itemTexture(item.item)).clearTint().setScale(1));
     this.sync('shells',m.shells,(sprite,s)=>{const t=1-s.time/0.75;sprite.setPosition(s.fromX+(s.x-s.fromX)*t,s.fromY+(s.y-s.fromY)*t-Math.sin(t*Math.PI)*90).setRotation(time*9);});
-    const saw=m.weapons.find(w=>w.id==='saw'),drones:Entity[]=[];
-    if(saw){const count=1+Math.floor(saw.level/3),radius=70+saw.level*3;for(let i=0;i<count;i++)drones.push({id:i,x:p.x+Math.cos(time*2.8+i*Math.PI*2/count)*radius,y:p.y+Math.sin(time*2.8+i*Math.PI*2/count)*radius});}
-    this.sync('drones',drones,sprite=>sprite.setRotation(time*11));
+    const saw=m.sawLayout(),drones:Entity[]=[];
+    for(let i=0;i<saw.count;i++)drones.push({id:i,x:p.x+Math.cos(time*saw.speed+i*Math.PI*2/saw.count)*saw.radius,y:p.y+Math.sin(time*saw.speed+i*Math.PI*2/saw.count)*saw.radius});
+    this.sync('drones',drones,sprite=>sprite.setRotation(time*11).setScale(saw.size/17));
     this.ground.clear();this.fx.clear();
     for(const node of m.nodes){
       this.ground.lineStyle(1,node.done?0x335253:0x789b92,0.6).strokeCircle(node.x,node.y,64);
@@ -106,6 +123,8 @@ export class GameScene extends Phaser.Scene {
       this.ground.lineStyle(2,node.done?0x3e615e:0xc1c795).strokeRect(node.x-12,node.y-12,24,24);
       if(!node.done){this.ground.fillStyle(0xbde0b9).fillRect(node.x-6,node.y-3,12,6);if(node.progress>0)this.ground.lineStyle(4,0xbbed9b).beginPath().arc(node.x,node.y,65,-Math.PI/2,-Math.PI/2+node.progress/4*Math.PI*2).strokePath();}
     }
+    if(m.itemCount('cloak')&&m.itemTimers.cloak<=0)this.ground.lineStyle(1,0xce9cff,0.7).strokeCircle(p.x,p.y,25);
+    for(const item of m.loot)this.ground.lineStyle(2,Number(RARITY_COLORS[ITEMS[item.item].rarity].replace('#','0x')),0.7).strokeCircle(item.x,item.y,22);
     for(const c of m.chests)this.ground.lineStyle(1,0xf8d081,0.5+Math.sin(time*3)*0.2).strokeCircle(c.x,c.y,26);
     for(const s of m.shells){this.ground.lineStyle(1,0xffbc72,0.7).strokeCircle(s.x,s.y,s.radius);this.ground.fillStyle(0xffbc72,0.06).fillCircle(s.x,s.y,s.radius);}
     for(const e of m.enemies)this.drawEnemySignals(e);
@@ -134,16 +153,20 @@ export class GameScene extends Phaser.Scene {
     else g.lineStyle(3,0xf9ba79,alpha).strokeCircle(e.x,e.y,e.radius+20+(1-e.windup)*20);
   }
   private drawRadar():void{
-    const m=this.model,g=this.radar;g.clear();this.label.setVisible(m.state!=='briefing');if(m.state==='briefing')return;
+    const m=this.model,g=this.radar;g.clear();const show=this.save.showMap&&m.state!=='briefing';this.label.setVisible(show);
     const x=840,y=12,size=102,scale=size/WORLD;
+    if(show){
     g.fillStyle(0x07161e,0.88).fillRect(x,y,size,size);g.lineStyle(1,0x536e75,0.7).strokeRect(x,y,size,size);
     const dot=(px:number,py:number,color:number,r=2)=>g.fillStyle(color).fillCircle(x+px*scale,y+py*scale,r);
     const view=this.cameras.main.worldView;g.lineStyle(1,0x466b72,0.6).strokeRect(x+view.x*scale,y+view.y*scale,view.width*scale,view.height*scale);
     for(const n of m.nodes)if(!n.done)dot(n.x,n.y,0xbad5a0,2);
-    for(const c of m.chests)dot(c.x,c.y,0xffd086,3);
+    for(const c of m.chests)dot(c.x,c.y,0xffd086,3);for(const item of m.loot)dot(item.x,item.y,Number(RARITY_COLORS[ITEMS[item.item].rarity].replace('#','0x')),3);
     for(let i=0;i<m.enemies.length;i+=3){const e=m.enemies[i];dot(e.x,e.y,e.kind==='tyrant'?0xffc57d:e.elite?0xf9ce8b:0xb97564,e.kind==='tyrant'?3:1);}
     if(m.extraction)dot(m.extraction.x,m.extraction.y,0x91ffdc,4);dot(m.player.x,m.player.y,0xd8ffff,2.5);
-    const destination=m.extraction??m.chests.reduce<{x:number;y:number}|null>((best,c)=>!best||Math.hypot(c.x-m.player.x,c.y-m.player.y)<Math.hypot(best.x-m.player.x,best.y-m.player.y)?c:best,null);
+    }
+    const view=this.cameras.main.worldView;
+    const objectives=[...m.chests,...m.loot];
+    const destination=m.extraction??objectives.reduce<{x:number;y:number}|null>((best,c)=>!best||Math.hypot(c.x-m.player.x,c.y-m.player.y)<Math.hypot(best.x-m.player.x,best.y-m.player.y)?c:best,null);
     if(destination){const px=destination.x-view.x,py=destination.y-view.y;if(px<30||px>930||py<90||py>460){const angle=Math.atan2(py-270,px-480),a=Math.min(1,420/Math.max(1,Math.abs(px-480)),170/Math.max(1,Math.abs(py-270))),cx=480+(px-480)*a,cy=270+(py-270)*a;g.fillStyle(m.extraction?0x91ffdc:0xffd086).fillTriangle(cx+Math.cos(angle)*9,cy+Math.sin(angle)*9,cx+Math.cos(angle+2.4)*7,cy+Math.sin(angle+2.4)*7,cx+Math.cos(angle-2.4)*7,cy+Math.sin(angle-2.4)*7);}}
     if(this.stick.active){g.lineStyle(2,0xb4e5d6,0.35).strokeCircle(this.stick.x,this.stick.y,36);g.fillStyle(0xb4e5d6,0.45).fillCircle(this.stick.x+this.stick.dx*30,this.stick.y+this.stick.dy*30,12);}
   }

@@ -1,3 +1,5 @@
+> Historical 0.3 implementation. [Build 0.4](build-spec-0.4.md) replaces weapon rarity and chest upgrade rewards.
+
 # Frontier build 0.3
 
 ## Core loop
