@@ -6,7 +6,7 @@ export const ITEMS={
   boots:{name:'Kinetic Soles',rarity:1,unlock:'runner',description:'Dash cooldown −0.2s per stack, down to 1.5s.',shape:'boots',cap:5},
   ration:{name:'Repair Moss',rarity:1,unlock:'scavenger',description:'Restore 1 HP every 18s. Each stack adds 1 HP to the pulse.',shape:'moss',cap:5},
   battery:{name:'Static Battery',rarity:1,unlock:'sweep',description:'Dashing blasts nearby enemies for 3 damage per stack in a radius of 100.',shape:'battery',cap:5},
-  compass:{name:'Survey Compass',rarity:1,unlock:'survey',description:'+10% XP and 15% faster salvage scans per stack.',shape:'compass',cap:5},
+  compass:{name:'Survey Compass',rarity:1,unlock:'survey',description:'+30% XP and 15% faster salvage scans per stack.',shape:'compass',cap:5},
   ice:{name:'Cryo Lantern',rarity:2,unlock:'elite',description:'Every 6s, chill enemies within 180 for 1.5s. Deal 2 damage per stack.',shape:'lantern',cap:5},
   thorns:{name:'Barbed Carapace',rarity:2,unlock:'scarred',description:'Taking damage retaliates for 4 damage per stack in a radius of 120.',shape:'shell',cap:5},
   spark:{name:'Storm Relay',rarity:2,unlock:'chain',description:'Critical hits arc to a nearby enemy for 35% of the hit per stack. Arcs cannot trigger more arcs.',shape:'relay',cap:3},

@@ -1,4 +1,4 @@
-import { ENEMIES, LIMITS, MODES, WEAPONS, WEAPON_IDS, WORLD, STARTING_HP, segmentDistance, type EnemyKind, type Mode, type WeaponId } from './content.js';
+import { ENEMIES, LIMITS, MODES, WEAPONS, WEAPON_IDS, WORLD, STARTING_HP, XP_GAIN_MULTIPLIER, segmentDistance, type EnemyKind, type Mode, type WeaponId } from './content.js';
 import type { SaveData } from './SaveData.js';
 import { achieved, emptyProgress, mergeProgress, WEAPON_UNLOCKS, type Progress } from './Progression.js';
 import { ITEMS, ITEM_IDS, type ItemId } from './Items.js';
@@ -22,11 +22,11 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const dist = (a: {x:number;y:number}, b:{x:number;y:number}) => Math.hypot(a.x - b.x, a.y - b.y);
 const MOD_BY_ID = new Map(WEAPON_MODS.map(mod=>[mod.id,mod]));
 const MODIFIERS = [
-  ['damage', 'Overcharged cells', 'All weapon damage +15%.'], ['rate', 'Cooling manifold', 'All weapons fire 12% faster.'],
+  ['damage', 'Overcharged cells', 'All weapon damage +30%.'], ['rate', 'Cooling manifold', 'All weapons fire 12% faster.'],
   ['speed', 'Runner servos', 'Move speed +10% (up to 2× base).'], ['pickup', 'Salvage magnet', 'Pickup and attraction radius +20.'],
   ['hp', 'Reinforced plating', 'Maximum HP +1. Restore 1 HP.'], ['repair', 'Repair canister', 'Restore 2 HP.'],
   ['crit', 'Optic calibrator', 'Critical hit chance +5 percentage points.'], ['armor', 'Impact mesh', 'Reduce incoming damage by another 8%.'],
-  ['xp', 'Survey processor', 'XP collected +12%.'],
+  ['xp', 'Survey processor', 'XP collected +36%.'],
 ];
 export class GameModel {
   state: RunState = 'running';
@@ -235,7 +235,7 @@ export class GameModel {
       w.clock=spec.cooldown/(this.stats.rate*mod.rate);
       if(w.id==='pistol'||w.id==='scatter'){
         const scatter=w.id==='scatter',count=(scatter?5:1)+mod.count;
-        const spread=scatter?0.13/(1+mod.range/200):0.07;
+        const spread=Math.min(scatter?0.13/(1+mod.range/200):0.07,(scatter?1.3:0.7)/Math.max(1,count-1));
         for(let i=0;i<count;i++)this.shoot(this.player.x,this.player.y,angle+(i-(count-1)/2)*spread,scatter?480:600,scatter?(range+13)/480:0.8,power,spec.color,false,4,mod.pierce,mod.shred);
       }
       if(w.id==='arc'){
@@ -248,14 +248,14 @@ export class GameModel {
       }
       if(w.id==='rail'){
         for(let i=0;i<1+mod.count;i++){
-          const beamAngle=angle+(i-mod.count/2)*0.12,tx=this.player.x+Math.cos(beamAngle)*range,ty=this.player.y+Math.sin(beamAngle)*range;
+          const beamAngle=angle+(i-mod.count/2)*Math.min(0.12,1.2/Math.max(1,mod.count)),tx=this.player.x+Math.cos(beamAngle)*range,ty=this.player.y+Math.sin(beamAngle)*range;
           this.effect('line',this.player.x,this.player.y,spec.color,5+mod.width*0.4,'',tx,ty);
           for(const e of this.enemies)if(e.hp>0&&segmentDistance(e.x,e.y,this.player.x,this.player.y,tx,ty)<e.radius+5+mod.width)this.damage(e,power);
         }
       }
       if(w.id==='mortar'){
         const targets=this.enemies.filter(e=>e.hp>0&&dist(e,this.player)<range).sort((a,b)=>dist(a,target)-dist(b,target));
-        for(let i=0;i<1+mod.count&&this.shells.length<20;i++){
+        for(let i=0;i<1+mod.count&&this.shells.length<LIMITS.shells;i++){
           const victim=targets[i%targets.length]??target;
           this.shells.push({id:this.uid++,x:victim.x,y:victim.y,fromX:this.player.x,fromY:this.player.y,time:0.75,damage:power,radius:70+mod.blast});
         }
@@ -334,13 +334,13 @@ export class GameModel {
     if(this.stats.hp<=0)this.end(false,'Salvager lost');
   }
   drop(kind:Pickup['kind'],x:number,y:number,value:number):void {
-    if(this.pickups.length>=LIMITS.pickups){const existing=this.pickups.find(p=>p.kind===kind);if(existing)existing.value+=value;else if(kind==='xp'){const gained=value*this.stats.xpBonus*(this.mode==='skirmish'?2:1);this.xp+=gained;this.totalXp+=gained;}else if(kind==='scrap')this.scrap+=value;else if(kind==='heal')this.stats.hp=Math.min(this.stats.maxHp,this.stats.hp+value);return;}
+    if(this.pickups.length>=LIMITS.pickups){const existing=this.pickups.find(p=>p.kind===kind);if(existing)existing.value+=value;else if(kind==='xp'){const gained=value*XP_GAIN_MULTIPLIER*this.stats.xpBonus*(this.mode==='skirmish'?2:1);this.xp+=gained;this.totalXp+=gained;}else if(kind==='scrap')this.scrap+=value;else if(kind==='heal')this.stats.hp=Math.min(this.stats.maxHp,this.stats.hp+value);return;}
     this.pickups.push({id:this.uid++,kind,x,y,value});
   }
   private tickPickups(dt:number):void {
     for(let i=this.pickups.length-1;i>=0;i--){const p=this.pickups[i],d=dist(p,this.player);
       if(d<this.stats.pickup){
-        if(p.kind==='xp'){const value=p.value*this.stats.xpBonus*(this.mode==='skirmish'?2:1);this.xp+=value;this.totalXp+=value;this.sound('xp');}
+        if(p.kind==='xp'){const value=p.value*XP_GAIN_MULTIPLIER*this.stats.xpBonus*(this.mode==='skirmish'?2:1);this.xp+=value;this.totalXp+=value;this.sound('xp');}
         if(p.kind==='scrap')this.scrap+=p.value;
         if(p.kind==='heal'){this.stats.hp=Math.min(this.stats.maxHp,this.stats.hp+p.value);this.effect('number',this.player.x,this.player.y-24,0xbbed9b,0,'REPAIR');this.sound('heal');}
         if(p.kind==='magnet'){for(const gem of this.pickups)if(gem.kind==='xp'){gem.x=this.player.x+(this.random()-0.5)*15;gem.y=this.player.y+(this.random()-0.5)*15;}this.notify('Magnetic surge — all XP drawn in','level');}
@@ -397,7 +397,7 @@ export class GameModel {
     if(id==='patch'){this.stats.maxHp++;this.stats.hp=Math.min(this.stats.maxHp,this.stats.hp+1);}
     if(id==='flywheel')this.stats.rate=Math.min(3,this.stats.rate+0.08);
     if(id==='scope')this.stats.crit=Math.min(0.6,this.stats.crit+0.04);
-    if(id==='compass')this.stats.xpBonus+=0.1;
+    if(id==='compass')this.stats.xpBonus+=0.3;
     if(item.rarity===4)this.metrics.legendary++;
   }
   checkLevel():void {
@@ -416,9 +416,9 @@ export class GameModel {
     if(c.kind==='item'&&c.item)this.collectItem(c.item);
     if(c.kind==='module'){
       const s=this.stats;
-      if(c.stat==='damage')s.damage+=0.15;if(c.stat==='rate')s.rate=Math.min(3,s.rate*1.12);if(c.stat==='speed')s.speed=Math.min(470,s.speed*1.1);
+      if(c.stat==='damage')s.damage+=0.3;if(c.stat==='rate')s.rate=Math.min(3,s.rate*1.12);if(c.stat==='speed')s.speed=Math.min(470,s.speed*1.1);
       if(c.stat==='pickup')s.pickup+=20;if(c.stat==='hp'){s.maxHp++;s.hp=Math.min(s.maxHp,s.hp+1);}if(c.stat==='repair')s.hp=Math.min(s.maxHp,s.hp+2);
-      if(c.stat==='crit')s.crit=Math.min(0.6,s.crit+0.05);if(c.stat==='armor')s.armor=Math.min(0.56,s.armor+0.08);if(c.stat==='xp')s.xpBonus+=0.12;
+      if(c.stat==='crit')s.crit=Math.min(0.6,s.crit+0.05);if(c.stat==='armor')s.armor=Math.min(0.56,s.armor+0.08);if(c.stat==='xp')s.xpBonus+=0.36;
     }
     this.choices=[];this.state='running';this.notify(`${c.title} installed`,'install');this.checkLevel();return true;
   }

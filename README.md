@@ -1,4 +1,4 @@
-# Scrapline Survivor — Frontier 0.4.1
+# Scrapline Survivor — Frontier 0.4.2
 
 A browser-first top-down survivor built with Phaser, TypeScript, and Vite. Assemble a four-weapon salvager, read the horde's attack warnings, defeat the Scrap Tyrant, and extract with your salvage.
 
@@ -13,6 +13,14 @@ A browser-first top-down survivor built with Phaser, TypeScript, and Vite. Assem
 - **Salvage:** crates physically drop one passive item, never weapons or weapon upgrades. Sixteen achievement-unlocked items have fixed Common–Legendary rarities, distinct textures, stack limits, and effects such as dash blasts, critical chains, healing pulses, shields, and one-use revival. Rerolls now belong to level-up choices.
 - **Workshop and achievements:** bank salvage for three capped starting upgrades. Seventeen achievements unlock weapons and item drop eligibility. Progress updates during runs and saves in this browser; existing workshop saves are migrated.
 - **Presentation:** compact corner HUD, optional minimap, full loadout inspection in pause, responsive menus, item and weapon icons, enemy guide, and achievement collection. The armored salvager and creature style are preserved.
+
+## Power tuning 0.4.2
+
+All six weapons deal twice their previous base damage. Direct weapon damage upgrade bonuses also double, including Mortar's separate damage curve; Overcharged Cells now adds 30% global weapon damage.
+
+Extra rounds, beams, chain targets, drones and shells grant **+2 / +3 / +5 / +7 / +10** across Common through Legendary. Scattergun pellet upgrades grant **+4 / +6 / +10 / +14 / +20**. Large volleys keep a bounded forward spread, and drone/shell pools accommodate the larger builds.
+
+Base XP collection is **3×** in both modes, preserving Skirmish's additional 2× multiplier. Survey Processor now adds **36%** XP and Survey Compass **30%** XP per stack. These bonuses apply to the new tripled base and add together. Pickup-cap fallback awards use the same multiplier. Level thresholds are unchanged.
 
 ## Maintenance update 0.4.1
 

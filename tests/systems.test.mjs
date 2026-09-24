@@ -11,7 +11,7 @@ try{
     await writeFile(join(temp,`${name}.js`),ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);
   }
   const load=name=>import(pathToFileURL(join(temp,`${name}.js`)));
-  const {GameModel}=await load('GameModel'),{WEAPON_IDS,LIMITS,segmentDistance,MODES}=await load('content');
+  const {GameModel}=await load('GameModel'),{WEAPONS,WEAPON_IDS,LIMITS,segmentDistance,MODES}=await load('content');
   const {parseSave,purchase}=await load('SaveData'),{emptyProgress,achieved,ACHIEVEMENTS}=await load('Progression');
   const {SpritePool}=await load('SpritePool'),{AudioBus}=await load('AudioBus');
   const {WEAPON_MODS,rollRarity}=await load('Upgrades'),{ITEMS,ITEM_IDS}=await load('Items');
@@ -23,6 +23,31 @@ try{
   const step=(m,seconds,input={x:0,y:0,dash:false})=>{for(let i=0;i<Math.ceil(seconds/.05);i++)m.tick(.05,input);};
   const foe=(m,kind='bruiser',x=1700,y=1600,hp=1000)=>{const e=m.spawn(kind,false,{x,y});e.hp=e.maxHp=hp;return e;};
   const install=(m,id,rarity=0)=>{const mod=WEAPON_MODS.find(x=>x.id===id);m.state='upgrade';m.choices=[{id,kind:'weaponMod',weapon:mod.weapon,mod:id,rarity}];assert.equal(m.choose(0),true);};
+  test('Doubled weapon damage and damage upgrades combine in actual hits',()=>{
+    assert.deepEqual(WEAPON_IDS.map(id=>WEAPONS[id].damage),[2,2.4,2.6,2.8,8,6]);
+    const m=calm();m.weapons=[weapon('pistol')];install(m,'pistol_load',0);
+    m.state='upgrade';m.choices=[{kind:'module',stat:'damage',title:'Overcharged cells'}];m.choose(0);
+    const e=foe(m,'bruiser',1660);step(m,.15);assert.ok(Math.abs((1000-e.hp)-3.64)<1e-9);
+    for(const mod of WEAPON_MODS.filter(mod=>mod.stat==='damage'))assert.deepEqual(mod.values,mod.weapon==='mortar'?[.5,.8,1.2,1.7,2.4]:[.4,.6,.9,1.3,1.8]);
+  });
+  test('Tripled XP and upgraded bonuses agree for collection, merged drops and cap fallback',()=>{
+    for(const mode of ['expedition','skirmish'])for(const upgraded of [false,true]){
+      const make=()=>{const m=new GameModel(mode,undefined,()=>.99,unlocked());m.weapons=[];m.spawnClock=m.eliteClock=1e6;if(upgraded){m.collectItem('compass');m.state='upgrade';m.choices=[{kind:'module',stat:'xp',title:'Survey processor'}];m.choose(0);}return m;};
+      const expected=3*(mode==='skirmish'?2:1)*(upgraded?1.66:1);
+      const normal=make();normal.drop('xp',1600,1600,1);step(normal,.05);assert.ok(Math.abs(normal.totalXp-expected)<1e-9);
+      const full=make();full.pickups=Array.from({length:LIMITS.pickups},(_,id)=>({id,x:0,y:0,kind:'scrap',value:1}));full.drop('xp',0,0,1);assert.ok(Math.abs(full.totalXp-expected)<1e-9);
+      const merged=make();merged.pickups=Array.from({length:LIMITS.pickups},(_,id)=>({id,x:0,y:0,kind:id===0?'xp':'scrap',value:1}));merged.drop('xp',0,0,1);merged.player.x=merged.player.y=0;step(merged,.05);assert.ok(Math.abs(merged.totalXp-expected*2)<1e-9);
+    }
+  });
+  test('Rarity increases real volley counts; maximum stacks fit drones and shells',()=>{
+    for(let rarity=0;rarity<5;rarity++)for(const id of ['pistol','scatter','rail','mortar']){
+      const m=calm();m.weapons=[weapon(id)];const mod=WEAPON_MODS.find(mod=>mod.weapon===id&&mod.stat==='count');install(m,mod.id,rarity);foe(m,'bruiser',1800);step(m,.05);
+      const expected=(id==='scatter'?5:1)+(id==='scatter'?[4,6,10,14,20]:[2,3,5,7,10])[rarity];
+      assert.equal(id==='rail'?m.effects.filter(e=>e.kind==='line').length:id==='mortar'?m.shells.length:m.shots.length,expected);
+      if(id==='pistol'||id==='scatter')assert.ok(m.shots.every(shot=>shot.vx>0));
+    }
+    const m=calm();m.weapons=[weapon('saw'),weapon('mortar')];for(let i=0;i<3;i++){install(m,'saw_swarm',4);install(m,'mortar_salvo',4);m.collectItem('prism');}foe(m);step(m,.05);assert.equal(m.sawLayout().count,34);assert.ok(m.sawLayout().count<=LIMITS.drones);assert.equal(m.shells.length,34);assert.ok(m.shells.length<=LIMITS.shells);
+  });
   test('Starting health is 10 in both modes, with workshop plating added',()=>{for(const mode of ['expedition','skirmish']){const base=new GameModel(mode),plated=new GameModel(mode,{plating:3,magnet:0,supplies:0});assert.equal(base.stats.hp,10);assert.equal(base.stats.maxHp,10);assert.equal(plated.stats.hp,13);assert.equal(plated.stats.maxHp,13);}});
   test('Base movement stays 235, normalized diagonals; pause freezes model',()=>{
     const a=calm(),b=calm();step(a,1,{x:1,y:0,dash:false});step(b,1,{x:1,y:1,dash:false});assert.ok(Math.abs(a.player.x-1835)<1e-6);assert.ok(Math.abs(Math.hypot(b.player.x-1600,b.player.y-1600)-235)<1e-6);
@@ -58,14 +83,14 @@ try{
   test('Every weapon hits; pistol pierces, rail adds beams, scatter exposes, mortar adds shells',()=>{
     for(const id of WEAPON_IDS){const m=calm();m.weapons=[weapon(id)];foe(m,'bruiser',1680);m.player.invulnerable=100;step(m,2);assert.ok(m.damageDealt>0,id);}
     const pistol=calm();pistol.weapons=[weapon('pistol')];install(pistol,'pistol_drill',0);const a=foe(pistol,'bruiser',1690),b=foe(pistol,'bruiser',1760);step(pistol,.4);assert.ok(a.hp<1000&&b.hp<1000);
-    const rail=calm();rail.weapons=[weapon('rail')];install(rail,'rail_split',4);foe(rail);step(rail,.05);assert.equal(rail.effects.filter(e=>e.kind==='line').length,4);
+    const rail=calm();rail.weapons=[weapon('rail')];install(rail,'rail_split',4);foe(rail);step(rail,.05);assert.equal(rail.effects.filter(e=>e.kind==='line').length,11);
     const scatter=calm();scatter.weapons=[weapon('scatter')];install(scatter,'scatter_shred',2);const exposed=foe(scatter,'bruiser',1700);step(scatter,.25);assert.ok(exposed.exposed>0&&exposed.exposureTime>0);
-    const mortar=calm();mortar.weapons=[weapon('mortar')];install(mortar,'mortar_salvo',2);foe(mortar);step(mortar,.05);assert.equal(mortar.shells.length,3);
+    const mortar=calm();mortar.weapons=[weapon('mortar')];install(mortar,'mortar_salvo',2);foe(mortar);step(mortar,.05);assert.equal(mortar.shells.length,6);
     assert.equal(segmentDistance(15,5,0,0,30,0),5);
   });
   test('Extra arc targets, slow duration, saw count and wide blades affect real combat',()=>{
     const arc=calm();arc.weapons=[weapon('arc')];install(arc,'arc_fork',2);install(arc,'arc_stasis',4);for(let i=0;i<5;i++)foe(arc,'bruiser',1680+i*45);step(arc,.05);assert.equal(arc.enemies.filter(e=>e.hp<1000).length,5);assert.ok(arc.enemies.every(e=>e.slow>2));
-    const saw=calm();saw.weapons=[weapon('saw')];install(saw,'saw_swarm',4);install(saw,'saw_reach',4);assert.equal(saw.sawLayout().count,4);assert.equal(saw.sawLayout().radius,108);assert.equal(saw.sawLayout().size,34.5);
+    const saw=calm();saw.weapons=[weapon('saw')];install(saw,'saw_swarm',4);install(saw,'saw_reach',4);assert.equal(saw.sawLayout().count,11);assert.equal(saw.sawLayout().radius,108);assert.equal(saw.sawLayout().size,34.5);
   });
   test('Crates physically drop only achievement-unlocked items; collecting shows one item',()=>{
     const m=calm(false);m.chests.push({id:900,x:1600,y:1600,tier:1});step(m,.05);assert.equal(m.chests.length,0);assert.equal(m.loot.length,1);assert.equal(m.metrics.crates,1);assert.equal(m.state,'running');assert.ok(achieved(m.progress(),ITEMS[m.loot[0].item].unlock));
@@ -82,7 +107,7 @@ try{
     const supplies=new GameModel('expedition',{plating:0,magnet:0,supplies:3});supplies.end(false,'Abort');assert.equal(supplies.banked,0);
   });
   test('Items apply stats, caps, pulse timers, dash effects, protection and one-use revival',()=>{
-    assert.equal(ITEM_IDS.length,16);const m=calm();m.collectItem('magnet');assert.equal(m.stats.pickup,46);m.stats.hp=3;m.collectItem('patch');assert.equal(m.stats.maxHp,11);assert.equal(m.stats.hp,4);m.collectItem('flywheel');assert.equal(m.stats.rate,1.08);m.collectItem('scope');assert.equal(m.stats.crit,.09);m.collectItem('compass');assert.equal(m.stats.xpBonus,1.1);
+    assert.equal(ITEM_IDS.length,16);const m=calm();m.collectItem('magnet');assert.equal(m.stats.pickup,46);m.stats.hp=3;m.collectItem('patch');assert.equal(m.stats.maxHp,11);assert.equal(m.stats.hp,4);m.collectItem('flywheel');assert.equal(m.stats.rate,1.08);m.collectItem('scope');assert.equal(m.stats.crit,.09);m.collectItem('compass');assert.equal(m.stats.xpBonus,1.3);
     const dash=calm();dash.collectItem('boots');dash.collectItem('battery');dash.weapons=[];const e=foe(dash,'bruiser',1680);step(dash,.05,{x:1,y:0,dash:true});assert.equal(dash.player.dashCooldown,2.8);assert.ok(e.hp<1000);const hp=dash.stats.hp;dash.hurt(2);assert.equal(dash.stats.hp,hp);
     const pulse=calm();pulse.weapons=[];pulse.collectItem('ration');pulse.collectItem('ice');pulse.collectItem('reactor');pulse.stats.hp=2;const ice=foe(pulse,'bruiser',1770);pulse.player.invulnerable=100;step(pulse,6.1);assert.ok(ice.slow>0);step(pulse,12);assert.ok(pulse.stats.hp>=3&&pulse.damageDealt>12);
     const thorns=calm();thorns.weapons=[];thorns.collectItem('thorns');const t=foe(thorns,'bruiser',1680);thorns.hurt(1);assert.equal(t.hp,996);
@@ -124,7 +149,7 @@ try{
     for(const reward of ['xp','item']){const run=calm();run.elapsed=719.99;if(reward==='xp')run.xp=100;else run.loot.push({id:700,x:1600,y:1600,item:'magnet'});step(run,.05);assert.equal(run.state,'ended');assert.equal(run.won,false);}
   });
   test('Weapon stats refresh after modifiers and Prism; invalid frame times are ignored',()=>{
-    const m=calm(),w=m.weapons[0];const initial=m.weaponStats(w);install(m,'pistol_twin',2);assert.equal(m.weaponStats(w).count,2);assert.equal(initial.count,0);m.collectItem('prism');assert.equal(m.weaponStats(w).count,3);
+    const m=calm(),w=m.weapons[0];const initial=m.weaponStats(w);install(m,'pistol_twin',2);assert.equal(m.weaponStats(w).count,5);assert.equal(initial.count,0);m.collectItem('prism');assert.equal(m.weaponStats(w).count,6);
     const snapshot=JSON.stringify(m);for(const dt of [0,-1,NaN,Infinity])m.tick(dt,{x:1,y:0,dash:true});assert.equal(JSON.stringify(m),snapshot);
   });
   test('New runs reset inventory, revival and cooldowns while preserving earned unlocks',()=>{
@@ -160,7 +185,7 @@ try{
       if(run.state==='upgrade'||run.state==='chest'){run.choose(run.choices.findIndex(c=>c.kind==='weaponMod'||c.kind==='item'));if(run.state==='upgrade'&&!run.choices.some(c=>c.kind==='weaponMod'))run.choose(0);continue;}
       const destination=run.extraction??run.loot[0]??run.chests[0]??run.pickups[0]??run.nodes.find(n=>!n.done)??{x:1600+Math.cos(run.elapsed/8)*280,y:1600+Math.sin(run.elapsed/8)*280};
       const dx=destination.x-run.player.x,dy=destination.y-run.player.y,d=Math.hypot(dx,dy)||1;run.tick(.05,{x:d>8?dx/d:0,y:d>8?dy/d:0,dash:false});ticks++;
-      assert.ok(run.enemies.length<=LIMITS.enemies);assert.ok(run.pickups.length<=LIMITS.pickups);assert.ok(run.effects.length<=LIMITS.effects);assert.ok(run.shots.filter(s=>!s.hostile).length<=LIMITS.projectiles);assert.ok(run.shells.length<=20);assert.ok(Number.isFinite(run.stats.hp));assert.ok(run.weapons.every(w=>!('rarity' in w)));
+      assert.ok(run.enemies.length<=LIMITS.enemies);assert.ok(run.pickups.length<=LIMITS.pickups);assert.ok(run.effects.length<=LIMITS.effects);assert.ok(run.shots.filter(s=>!s.hostile).length<=LIMITS.projectiles);assert.ok(run.shells.length<=LIMITS.shells);assert.ok(Number.isFinite(run.stats.hp));assert.ok(run.weapons.every(w=>!('rarity' in w)));
     }
     assert.equal(run.state,'ended');assert.equal(run.bossSpawned,true);assert.ok(run.metrics.crates>0);console.log(`  ${ticks} ticks, ${run.kills} kills, level ${run.level}, ${Object.keys(run.items).length} items, ${run.won?'extracted':'timed out'}, ${Math.round(performance.now()-started)}ms`);
   });

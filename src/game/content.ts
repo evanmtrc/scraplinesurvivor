@@ -1,14 +1,15 @@
 export const WORLD = 3200;
 export const STARTING_HP = 10;
+export const XP_GAIN_MULTIPLIER = 3;
 export const WEAPON_IDS = ['pistol', 'scatter', 'arc', 'saw', 'mortar', 'rail'] as const;
 export type WeaponId = typeof WEAPON_IDS[number];
 export const WEAPONS: Record<WeaponId, { name: string; short: string; color: number; cooldown: number; damage: number; range: number; description: string }> = {
-  pistol: { name: 'Rust Pistol', short: 'PISTOL', color: 0xffdf83, cooldown: 0.42, damage: 1, range: 410, description: 'Fast, precise shots at your selected target.' },
-  scatter: { name: 'Scattergun', short: 'SCATTER', color: 0xffab69, cooldown: 1.15, damage: 1.2, range: 275, description: 'A five-pellet fan that shreds nearby crowds.' },
-  arc: { name: 'Arc Welder', short: 'ARC', color: 0x87e9ef, cooldown: 1.3, damage: 1.3, range: 280, description: 'Lightning chains through three enemies and slows them.' },
-  saw: { name: 'Saw Drone', short: 'SAW', color: 0xbbef9a, cooldown: 0.45, damage: 1.4, range: 88, description: 'An orbiting blade protects your perimeter.' },
-  mortar: { name: 'Mortar Pod', short: 'MORTAR', color: 0xffc381, cooldown: 2.1, damage: 4, range: 450, description: 'Lobs shells that explode across a wide area.' },
-  rail: { name: 'Rail Spike', short: 'RAIL', color: 0xd4a5ff, cooldown: 1.7, damage: 3, range: 620, description: 'A piercing beam hits every enemy along its path.' },
+  pistol: { name: 'Rust Pistol', short: 'PISTOL', color: 0xffdf83, cooldown: 0.42, damage: 2, range: 410, description: 'Fast, precise shots at your selected target.' },
+  scatter: { name: 'Scattergun', short: 'SCATTER', color: 0xffab69, cooldown: 1.15, damage: 2.4, range: 275, description: 'A five-pellet fan that shreds nearby crowds.' },
+  arc: { name: 'Arc Welder', short: 'ARC', color: 0x87e9ef, cooldown: 1.3, damage: 2.6, range: 280, description: 'Lightning chains through three enemies and slows them.' },
+  saw: { name: 'Saw Drone', short: 'SAW', color: 0xbbef9a, cooldown: 0.45, damage: 2.8, range: 88, description: 'An orbiting blade protects your perimeter.' },
+  mortar: { name: 'Mortar Pod', short: 'MORTAR', color: 0xffc381, cooldown: 2.1, damage: 8, range: 450, description: 'Lobs shells that explode across a wide area.' },
+  rail: { name: 'Rail Spike', short: 'RAIL', color: 0xd4a5ff, cooldown: 1.7, damage: 6, range: 620, description: 'A piercing beam hits every enemy along its path.' },
 };
 export const RARITIES = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'] as const;
 export const RARITY_COLORS = ['#a8b8bb', '#a8dc92', '#84bdff', '#ce9cff', '#ffcf78'];
@@ -29,7 +30,7 @@ export const MODES = {
   expedition: { title: 'Expedition', bossAt: 600, deadline: 720, description: '10–12 minutes · Build, scavenge, defeat the Tyrant, extract.' },
   skirmish: { title: 'Skirmish', bossAt: 120, deadline: 180, description: '2–3 minutes · Faster XP and encounters for a short, full run.' },
 };
-export const LIMITS = { enemies: 180, projectiles: 200, hostile: 100, pickups: 220, effects: 180 };
+export const LIMITS = { enemies: 180, projectiles: 200, hostile: 100, shells: 64, drones: 34, pickups: 220, effects: 180 };
 export function segmentDistance(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const dx = bx - ax, dy = by - ay;
   const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));

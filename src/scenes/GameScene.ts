@@ -23,7 +23,7 @@ export class GameScene extends Phaser.Scene {
     createArt(this);createItemArt(this);this.drawWorld();this.save=readSave();this.audio=new AudioBus(this.save.muted);
     this.model=new GameModel('expedition',this.save.upgrades,Math.random,this.save.progress);this.model.metrics.deployments=0;this.model.state='briefing';
     this.ground=this.add.graphics().setDepth(1);this.fx=this.add.graphics().setDepth(12);this.radar=this.add.graphics().setScrollFactor(0).setDepth(30);
-    for(const [name,texture,limit,depth] of [['enemies','crawler',LIMITS.enemies,5],['shots','bullet',LIMITS.projectiles+LIMITS.hostile,8],['pickups','xp',LIMITS.pickups,2],['chests','chest',20,3],['loot','item-magnet',30,4],['drones','saw',16,10],['shells','shell',20,10]] as const)this.layers[name]={pool:new SpritePool(this,texture,limit,depth),sprites:new Map(),live:new Set()};
+    for(const [name,texture,limit,depth] of [['enemies','crawler',LIMITS.enemies,5],['shots','bullet',LIMITS.projectiles+LIMITS.hostile,8],['pickups','xp',LIMITS.pickups,2],['chests','chest',20,3],['loot','item-magnet',30,4],['drones','saw',LIMITS.drones,10],['shells','shell',LIMITS.shells,10]] as const)this.layers[name]={pool:new SpritePool(this,texture,limit,depth),sprites:new Map(),live:new Set()};
     this.boots=this.add.image(this.model.player.x,this.model.player.y,'boots').setDepth(8.5);
     this.body=this.add.image(this.model.player.x,this.model.player.y,'salvager').setDepth(9);
     this.cameras.main.setBounds(0,0,WORLD,WORLD).startFollow(this.body,true,0.14,0.14);
